@@ -2,16 +2,21 @@ import React, {useState, useEffect} from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Svg, {Circle, Defs, LinearGradient, Path, Stop, Rect, G} from 'react-native-svg';
 
-import {colors, shadow} from './theme';
+const {width: SCREEN_W} = Dimensions.get('window');
+
+import {shadow} from './theme';
 import OrdersPage from './OrdersPage';
 import InventoryPage from './InventoryPage';
 import DispatchTrackingPage from './DispatchTrackingPage';
@@ -25,23 +30,42 @@ import CategoryPage from './CategoryPage';
 import InvoicesPage from './InvoicesPage';
 import PlaceOrderPage from './PlaceOrderPage';
 
-// ─── Additional Dashboard Colors ────────────────────────────────────────────
-const dashColors = {
-  ...colors,
-  green: '#1A7A3C',
-  greenLight: '#E8F5ED',
-  danger: '#C0392B',
-  amber: '#B86A00',
-  amberLight: '#FEF3E2',
+// ─── Design Tokens — Sri Chakra Industries Brand ─────────────────────────────
+const C = {
+  // Brand — Sri Chakra Industries
+  primary:      '#C8102E',   // Chakra Red (logo primary)
+  primaryDark:  '#A0001C',   // Chakra Dark Red (logo secondary)
+  primaryLight: '#FDEAED',   // Soft red tint for backgrounds
+  primaryMid:   '#E8112D',   // Mid red for accents
+
+  success:      '#2E7D32',
+  successLight: '#E8F5E9',
+  warning:      '#E65100',
+  warningLight: '#FFF3E0',
+  danger:       '#B71C1C',
+  dangerLight:  '#FFEBEE',
+  info:         '#1565C0',
+  infoLight:    '#E3F0FF',
+  purple:       '#6A1B9A',
+  purpleLight:  '#F3E5F5',
+  teal:         '#00695C',
+  tealLight:    '#E0F2F1',
+
+  bg:           '#F5F7FA',
+  card:         '#FFFFFF',
+  border:       '#E2E8F0',
+  text:         '#1A2332',
+  textSub:      '#4A5568',
+  muted:        '#718096',
 };
 
 // ─── Nav Items ────────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
-  {id: 'home', label: 'Home', icon: 'home'},
-  {id: 'orders', label: 'Orders', icon: 'clipboard-text'},
-  {id: 'inventory', label: 'Stock', icon: 'package-variant'},
-  {id: 'dispatch', label: 'Track', icon: 'truck-delivery'},
-  {id: 'profile', label: 'Profile', icon: 'account'},
+  {id: 'home',     label: 'Home',    icon: 'home'},
+  {id: 'orders',   label: 'Orders',  icon: 'clipboard-text-outline'},
+  {id: 'stock',    label: 'Stock',   icon: 'cube-outline'},
+  {id: 'dispatch', label: 'Track',   icon: 'truck-delivery-outline'},
+  {id: 'profile',  label: 'Profile', icon: 'account-outline'},
 ];
 
 // ─── Root Component ────────────────────────────────────────────────────────────
@@ -49,51 +73,44 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
   const [activeTab, setActiveTab] = useState('home');
   const [activePage, setActivePage] = useState(externalActivePage || 'home');
 
-  // Sync with external page changes
   React.useEffect(() => {
     if (externalActivePage) {
       setActivePage(externalActivePage);
-      if (['home', 'orders', 'inventory', 'dispatch', 'profile'].includes(externalActivePage)) {
+      if (NAV_ITEMS.map(n => n.id).includes(externalActivePage)) {
         setActiveTab(externalActivePage);
       }
     }
   }, [externalActivePage]);
 
-  const handleNavigate = (page) => {
+  const handleNavigate = page => {
     setActivePage(page);
-    if (onPageChange) {
-      onPageChange(page);
-    }
-    if (['home', 'orders', 'inventory', 'dispatch', 'profile'].includes(page)) {
-      setActiveTab(page);
-    }
+    if (onPageChange) onPageChange(page);
+    if (NAV_ITEMS.map(n => n.id).includes(page)) setActiveTab(page);
   };
 
-  // Sub-pages that manage their own scrolling — render them at full flex: 1
-  const isSubPage = !['home'].includes(activePage);
-
-  const handleBackToHome = () => {
-    handleNavigate('home');
-  };
+  const isSubPage = activePage !== 'home';
+  const handleBackToHome = () => handleNavigate('home');
 
   if (isSubPage) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
+        <StatusBar barStyle="light-content" backgroundColor={C.primary} />
         <View style={styles.subPageContainer}>
-          {activePage === 'orders' && <OrdersPage onBack={handleBackToHome} />}
-          {activePage === 'inventory' && <InventoryPage onBack={handleBackToHome} />}
-          {activePage === 'dispatch' && <DispatchTrackingPage onBack={handleBackToHome} />}
-          {activePage === 'profile' && <ProfilePage onLogout={onLogout} onBack={handleBackToHome} />}
-          {activePage === 'ledger' && <FinanceLedgerSection onBack={handleBackToHome} />}
-          {activePage === 'returns' && <ReturnsComplaintsSection onBack={handleBackToHome} />}
-          {activePage === 'reports' && <ReportsDashboardSection onBack={handleBackToHome} />}
-          {activePage === 'support' && <SupportPage onBack={handleBackToHome} />}
+          {activePage === 'orders'        && <OrdersPage onBack={handleBackToHome} />}
+          {activePage === 'inventory'     && <InventoryPage onBack={handleBackToHome} />}
+          {activePage === 'stock'         && <InventoryPage onBack={handleBackToHome} />}
+          {activePage === 'dispatch'      && <DispatchTrackingPage onBack={handleBackToHome} />}
+          {activePage === 'profile'       && <ProfilePage onLogout={onLogout} onBack={handleBackToHome} />}
+          {activePage === 'ledger'        && <FinanceLedgerSection onBack={handleBackToHome} />}
+          {activePage === 'returns'       && <ReturnsComplaintsSection onBack={handleBackToHome} />}
+          {activePage === 'reports'       && <ReportsDashboardSection onBack={handleBackToHome} />}
+          {activePage === 'support'       && <SupportPage onBack={handleBackToHome} />}
           {activePage === 'notifications' && <NotificationsPage onBack={handleBackToHome} />}
-          {activePage === 'category' && <CategoryPage onBack={handleBackToHome} />}
-          {activePage === 'invoices' && <InvoicesPage onBack={handleBackToHome} />}
-          {activePage === 'placeorder' && <PlaceOrderPage onBack={handleBackToHome} />}
+          {activePage === 'category'      && <CategoryPage onBack={handleBackToHome} />}
+          {activePage === 'invoices'      && <InvoicesPage onBack={handleBackToHome} />}
+          {activePage === 'placeorder'    && <PlaceOrderPage onBack={handleBackToHome} />}
         </View>
-        <BottomNavigation activeTab={activeTab} onChange={(tab) => {
+        <BottomNavigation activeTab={activeTab} onChange={tab => {
           setActiveTab(tab);
           handleNavigate(tab);
         }} />
@@ -103,13 +120,14 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
+      <StatusBar barStyle="light-content" backgroundColor={C.primary} />
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollBody}>
         <HomePage onNavigate={handleNavigate} onLogout={onLogout} />
       </ScrollView>
-      <BottomNavigation activeTab={activeTab} onChange={(tab) => {
+      <BottomNavigation activeTab={activeTab} onChange={tab => {
         setActiveTab(tab);
         handleNavigate(tab);
       }} />
@@ -120,171 +138,129 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
 // ─── Home Page ─────────────────────────────────────────────────────────────────
 import dealerService from './services/dealerService';
 
-// Helper function to get greeting
-function getGreeting() {
-  return 'Namaste';
-}
-
-function HomePage({onNavigate, onLogout}) {
+function HomePage({onNavigate}) {
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState(null);
-  const greeting = getGreeting();
 
-  useEffect(() => {
-    loadDashboard();
-  }, []);
+  useEffect(() => { loadDashboard(); }, []);
 
   const loadDashboard = async () => {
     try {
       setLoading(true);
       const response = await dealerService.getDashboard();
-      if (response.success) {
-        setDashboardData(response.data);
-      }
+      if (response.success) setDashboardData(response.data);
     } catch (error) {
       Alert.alert('Error', 'Failed to load dashboard data');
-      console.error('Dashboard Error:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Extract data with fallbacks
-  const dealer = dashboardData?.dealer || {};
-  const stats = dashboardData?.stats || {};
-  const dealerName = dealer.name || 'Dealer';
-  const dealerCode = dealer.dealerCode || 'N/A';
-  const zone = dealer.zone || 'Zone';
-  const usedCredit = dealer.usedCredit || 0;
-  const creditLimit = dealer.creditLimit || 0;
-  const availableCredit = dealer.availableCredit || 0;
-  const usedPercentage = creditLimit > 0 ? Math.round((usedCredit / creditLimit) * 100) : 0;
-  const totalOrders = stats.totalOrders || 0;
-  const monthOrders = stats.monthOrders || 0;
-  const pendingOrders = stats.pendingOrders || 0;
-  const deliveredOrders = stats.deliveredOrders || 0;
-  const monthlyPurchase = stats.monthlyPurchaseAmount || 0;
-  const pendingInvoices = stats.pendingInvoices || 0;
-  const outstandingAmount = dashboardData?.dealer?.outstandingAmount || 0;
-  const recentOrders = dashboardData?.recentOrders || [];
+  const dealer         = dashboardData?.dealer        || {};
+  const stats          = dashboardData?.stats         || {};
+  const recentOrders   = dashboardData?.recentOrders  || [];
+
+  const dealerName     = dealer.name            || 'Dealer';
+  const dealerCode     = dealer.dealerCode      || 'N/A';
+  const lastLogin      = dealer.lastLogin        || 'First login';
+
+  const totalOrders    = stats.totalOrders       || 0;
+  const pendingApproval= stats.pendingApproval   || stats.pendingOrders || 0;
+  const approved       = stats.approved          || 0;
+  const processing     = stats.processing        || 0;
+  const dispatched     = stats.dispatched        || 0;
+  const delivered      = stats.deliveredOrders   || stats.delivered || 0;
 
   if (loading) {
     return (
-      <View style={{flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 100}}>
-        <ActivityIndicator size="large" color={dashColors.red} />
-        <Text style={{marginTop: 12, color: dashColors.muted}}>Loading dashboard...</Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={C.primary} />
+        <Text style={styles.loadingText}>Loading dashboard…</Text>
       </View>
     );
   }
 
+  // ── Quick Actions (8 items, no Reports, no Support) ──
   const quickActions = [
-    {id: 'placeorder', label: 'Place Order', icon: 'cart-plus', nav: 'placeorder'},
-    {id: 'orders', label: 'Orders', icon: 'clipboard-text', nav: 'orders'},
-    {id: 'category', label: 'Category', icon: 'view-grid', nav: 'category'},
-    {id: 'inventory', label: 'Inventory', icon: 'package-variant', nav: 'inventory'},
-    {id: 'tracking', label: 'Tracking', icon: 'truck-delivery', nav: 'dispatch'},
-    {id: 'ledger', label: 'Ledger', icon: 'book-open', nav: 'ledger'},
-    {id: 'invoices', label: 'Invoices', icon: 'file-document', nav: 'invoices'},
-    {id: 'returns', label: 'Returns', icon: 'keyboard-return', nav: 'returns'},
-    {id: 'reports', label: 'Reports', icon: 'chart-bar', nav: 'reports'},
-    {id: 'support', label: 'Support', icon: 'headset', nav: 'support'},
-  ];
-
-  const topProducts = [
-    {id: 1, name: 'Coconut Oil 1L', sku: 'CO-1000', stock: 245, price: '₹450', image: '🥥'},
-    {id: 2, name: 'Sesame Oil 500ml', sku: 'SO-500', stock: 180, price: '₹280', image: '🌾'},
-    {id: 3, name: 'Groundnut Oil 1L', sku: 'GO-1000', stock: 156, price: '₹380', image: '🥜'},
-    {id: 4, name: 'Mustard Oil 500ml', sku: 'MO-500', stock: 98, price: '₹220', image: '🌿'},
+    {id: 'placeorder', label: 'Place Order',   icon: 'cart-plus',        nav: 'placeorder', color: C.primary,  bg: C.primaryLight},
+    {id: 'orders',     label: 'My Orders',     icon: 'clipboard-list',   nav: 'orders',     color: C.success,  bg: C.successLight},
+    {id: 'category',   label: 'Categories',    icon: 'view-grid',        nav: 'category',   color: C.purple,   bg: C.purpleLight},
+    {id: 'inventory',  label: 'Inventory',     icon: 'package-variant',  nav: 'inventory',  color: C.teal,     bg: C.tealLight},
+    {id: 'tracking',   label: 'Track Orders',  icon: 'truck-delivery',   nav: 'dispatch',   color: C.info,     bg: C.infoLight},
+    {id: 'ledger',     label: 'Ledger',        icon: 'book-open-variant',nav: 'ledger',     color: C.warning,  bg: C.warningLight},
+    {id: 'invoices',   label: 'Invoices',      icon: 'file-document',    nav: 'invoices',   color: C.primaryDark, bg: C.primaryLight},
+    {id: 'returns',    label: 'Returns',       icon: 'keyboard-return',  nav: 'returns',    color: C.danger,   bg: C.dangerLight},
   ];
 
   return (
     <>
-      {/* ── Red Header ── */}
-      <View style={styles.redHeader}>
-        {/* Top row */}
-        <View style={styles.redHeaderTop}>
-          <View>
-            <Text style={styles.greetingName}>{greeting}, {dealerName}</Text>
-            <Text style={styles.greetingMeta}>{dealerCode}  ·  {zone}</Text>
+      {/* ══════════════════════════════════════════
+          HEADER
+      ══════════════════════════════════════════ */}
+      <View style={styles.header}>
+        <View style={styles.headerInner}>
+          <View style={styles.headerLeft}>
+            <View style={styles.companyBadge}>
+              <Icon name="factory" size={14} color={C.primary} />
+              <Text style={styles.companyBadgeText}>Sri Chakra Industries</Text>
+            </View>
+            <Text style={styles.welcomeText}>Welcome, {dealerName}</Text>
+            <View style={styles.dealerMetaRow}>
+              <View style={styles.dealerMetaChip}>
+                <Icon name="identifier" size={11} color={C.primary} />
+                <Text style={styles.dealerMetaChipText}>{dealerCode}</Text>
+              </View>
+              <View style={styles.dealerMetaChip}>
+                <Icon name="clock-outline" size={11} color={C.muted} />
+                <Text style={[styles.dealerMetaChipText, {color: C.muted}]}>
+                  Last: {lastLogin}
+                </Text>
+              </View>
+            </View>
           </View>
-          <Pressable style={styles.iconBtn} onPress={() => onNavigate('notifications')}>
-            <Icon name="bell" size={20} color="#FFFFFF" />
+          <Pressable style={styles.notifBtn} onPress={() => onNavigate('notifications')}>
+            <Icon name="bell-outline" size={22} color={C.primary} />
             <View style={styles.notifDot} />
-          </Pressable>
-        </View>
-
-        {/* ── Credit Card Widget ── */}
-        <View style={styles.creditCard}>
-          <View style={styles.creditCardInner}>
-            <View style={styles.creditLeft}>
-              <Text style={styles.creditKicker}>CREDIT LIMIT USED</Text>
-              <Text style={styles.creditAmount}>₹{(usedCredit / 1000).toFixed(1)}K</Text>
-              <Text style={styles.creditSub}>of ₹{(creditLimit / 1000).toFixed(1)}K total limit</Text>
-
-              {/* Progress bar */}
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, {width: `${usedPercentage}%`}]} />
-              </View>
-
-              <View style={styles.dueLine}>
-                <Text style={styles.dueLabel}>Available credit</Text>
-                <Text style={styles.dueDate}>₹{(availableCredit / 1000).toFixed(1)}K</Text>
-              </View>
-            </View>
-
-            <View style={styles.usedBadge}>
-              <Text style={styles.usedPct}>{usedPercentage}%</Text>
-              <Text style={styles.usedWord}>used</Text>
-            </View>
-          </View>
-        </View>
+          </Pressable>        </View>
       </View>
 
-      {/* ── Metrics Grid ── */}
-      <View style={styles.metricsGrid}>
-        <MetricCard 
-          value={String(totalOrders || 0)} 
-          label="Total Orders" 
-          sub={`${monthOrders} this month`} 
-          subColor={dashColors.muted} 
-        />
-        <MetricCard 
-          value={monthlyPurchase > 0 ? `₹${(monthlyPurchase / 1000).toFixed(1)}K` : '₹0'} 
-          label="Purchases (MTD)" 
-          sub="Month to date" 
-          subColor={dashColors.green} 
-        />
-        <MetricCard 
-          value={String(pendingOrders || 0)} 
-          label="Pending orders" 
-          sub={pendingOrders > 0 ? "● Action needed" : "All clear"} 
-          subColor={pendingOrders > 0 ? dashColors.red : dashColors.green} 
-        />
-        <MetricCard 
-          value={String(deliveredOrders || 0)} 
-          label="Delivered orders" 
-          sub="Orders fulfilled" 
-          subColor={dashColors.green} 
-        />
-        <MetricCard 
-          value={outstandingAmount > 0 ? `₹${(outstandingAmount / 1000).toFixed(1)}K` : '₹0'} 
-          label="Outstanding" 
-          sub={outstandingAmount > 0 ? "Awaiting payment" : "No dues"} 
-          subColor={outstandingAmount > 0 ? dashColors.red : dashColors.green} 
-        />
-      </View>
+      {/* ══════════════════════════════════════════
+          STATS GRAPHIC BANNER
+      ══════════════════════════════════════════ */}
+      <DashboardGraphic
+        totalOrders={totalOrders}
+        delivered={delivered}
+        dispatched={dispatched}
+      />
 
-      {/* ── Quick Actions ── */}
+      {/* ══════════════════════════════════════════
+          DASHBOARD SUMMARY CARDS (3-per-row grid)
+      ══════════════════════════════════════════ */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick actions</Text>
+        <Text style={styles.sectionTitle}>Dashboard Summary</Text>
+        <View style={styles.summaryGrid}>
+          <SummaryCard label="Total Orders"  value={totalOrders}     icon="receipt"                 iconBg={C.primaryLight} iconColor={C.primary}  />
+          <SummaryCard label="Pending"       value={pendingApproval} icon="clock-outline"           iconBg={C.warningLight} iconColor={C.warning}  />
+          <SummaryCard label="Approved"      value={approved}        icon="check-decagram"          iconBg={C.successLight} iconColor={C.success}  />
+          <SummaryCard label="Processing"    value={processing}      icon="progress-clock"          iconBg={C.infoLight}    iconColor={C.info}     />
+          <SummaryCard label="Dispatched"    value={dispatched}      icon="truck-delivery"          iconBg={C.purpleLight}  iconColor={C.purple}   />
+          <SummaryCard label="Delivered"     value={delivered}       icon="home-map-marker"         iconBg={C.tealLight}    iconColor={C.teal}     />
+        </View>
+      </View>
+
+      {/* ══════════════════════════════════════════
+          QUICK ACTIONS
+      ══════════════════════════════════════════ */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.qaGrid}>
           {quickActions.map(item => (
-            <Pressable 
-              key={item.id} 
+            <Pressable
+              key={item.id}
               style={styles.qaItem}
-              onPress={() => onNavigate && onNavigate(item.nav)}>
-              <View style={[styles.qaIcon, item.primary && styles.qaIconPrimary]}>
-                <Icon name={item.icon} size={24} color={dashColors.red} />
+              onPress={() => onNavigate(item.nav)}>
+              <View style={[styles.qaIconWrap, {backgroundColor: item.bg}]}>
+                <Icon name={item.icon} size={24} color={item.color} />
               </View>
               <Text style={styles.qaLabel}>{item.label}</Text>
             </Pressable>
@@ -292,107 +268,251 @@ function HomePage({onNavigate, onLogout}) {
         </View>
       </View>
 
-      {/* ── Recent Orders ── */}
+      {/* ══════════════════════════════════════════
+          RECENT ORDERS
+      ══════════════════════════════════════════ */}
       <View style={styles.section}>
         <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Recent orders</Text>
+          <Text style={styles.sectionTitle}>Recent Orders</Text>
           <Pressable onPress={() => onNavigate('orders')}>
-            <Text style={styles.seeAll}>See all →</Text>
+            <Text style={styles.seeAll}>View All →</Text>
           </Pressable>
         </View>
-
         {recentOrders.length === 0 ? (
-          <Text style={{textAlign: 'center', color: dashColors.muted, marginTop: 10}}>No recent orders</Text>
+          <View style={styles.emptyState}>
+            <Icon name="clipboard-text-off-outline" size={40} color={C.muted} />
+            <Text style={styles.emptyStateText}>No recent orders</Text>
+          </View>
         ) : (
-          recentOrders.map(order => (
-            <OrderCard
+          recentOrders.slice(0, 5).map(order => (
+            <RecentOrderCard
               key={order.orderId}
-              code={order.orderId}
-              time={new Date(order.date).toLocaleDateString('en-IN', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'})}
-              desc={`Amount: ₹${Number(order.amount).toLocaleString('en-IN')}`}
-              amount={`₹${Number(order.amount).toLocaleString('en-IN')}`}
-              status={order.status}
-              statusColor={
-                order.status === 'Delivered' ? dashColors.green :
-                order.status === 'Cancelled' ? dashColors.red :
-                order.status === 'Pending' ? dashColors.amber : dashColors.red
-              }
-              statusBg={
-                order.status === 'Delivered' ? dashColors.greenLight :
-                order.status === 'Cancelled' ? '#FFF5F5' :
-                order.status === 'Pending' ? dashColors.amberLight : 'rgba(198, 40, 40, 0.1)'
-              }
-              action={order.status === 'Shipped' || order.status === 'In Transit' ? '🚚 Track' : '📄 View'}
-              actionColor={dashColors.red}
-              onPress={() => onNavigate('orders')}
+              order={order}
+              onNavigate={onNavigate}
             />
           ))
         )}
       </View>
 
-      {/* Bottom padding for nav */}
       <View style={{height: 100}} />
     </>
   );
 }
 
-// ─── Other Pages ──────────────────────────────────────────────────────────────
-// Removed - now using separate page components
+// ─── DashboardGraphic ─────────────────────────────────────────────────────────
+function DashboardGraphic({totalOrders, delivered, dispatched}) {
+  const W = SCREEN_W - 32;  // 16px margin on each side
+  const H = 138;
+  const fulfilled = totalOrders > 0
+    ? Math.round(((delivered + dispatched) / totalOrders) * 100)
+    : 0;
 
-// ─── Shared Components ────────────────────────────────────────────────────────
-function MetricCard({value, label, sub, subColor}) {
+  // Bar chart data — 5 weekly bars with real total as peak
+  const barH   = H - 44;
+  const bars   = [0.45, 0.65, 0.50, 0.80, 1.0].map((r, i) => ({
+    h:   Math.round(r * barH * 0.75),
+    x:   W * 0.38 + i * 32,
+    key: i,
+    active: i === 4,
+  }));
+
   return (
-    <View style={styles.metricCard}>
-      <Text style={styles.metricValue}>{value}</Text>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={[styles.metricSub, {color: subColor}]}>{sub}</Text>
+    <View style={styles.graphicWrap}>
+      <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <Defs>
+          {/* Main card gradient */}
+          <LinearGradient id="cardGrad" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%"   stopColor="#C8102E" stopOpacity="1" />
+            <Stop offset="100%" stopColor="#6A0016" stopOpacity="1" />
+          </LinearGradient>
+          {/* Bar active gradient */}
+          <LinearGradient id="barActive" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity="0.95" />
+            <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0.60" />
+          </LinearGradient>
+          {/* Bar inactive gradient */}
+          <LinearGradient id="barInactive" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity="0.35" />
+            <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0.15" />
+          </LinearGradient>
+        </Defs>
+
+        {/* Card background — flush with header on top, rounded bottom via wrapper */}
+        <Rect x={0} y={0} width={W} height={H} rx={18} fill="url(#cardGrad)" />
+
+        {/* Decorative circles — top-right */}
+        <Circle cx={W - 10} cy={-10}  r={55} fill="#FFFFFF" fillOpacity={0.05} />
+        <Circle cx={W - 30} cy={10}   r={30} fill="#FFFFFF" fillOpacity={0.06} />
+        <Circle cx={W + 5}  cy={H/2}  r={40} fill="#FFFFFF" fillOpacity={0.04} />
+
+        {/* Decorative arc — bottom-left */}
+        <Circle cx={-5} cy={H + 5} r={65} fill="none" stroke="#FFFFFF" strokeWidth={1.2} strokeOpacity={0.12} />
+        <Circle cx={-5} cy={H + 5} r={45} fill="none" stroke="#FFFFFF" strokeWidth={1}   strokeOpacity={0.08} />
+
+        {/* ── Left side: stats text ── */}
+        {/* Label: Total Orders */}
+        <G>
+          <Rect x={16} y={18} width={90} height={18} rx={9} fill="#FFFFFF" fillOpacity={0.15} />
+        </G>
+
+        {/* SVG text: label */}
+        {/* (We use View overlay below for proper text rendering) */}
+
+        {/* Bar chart — right side */}
+        {bars.map(b => (
+          <G key={b.key}>
+            <Rect
+              x={b.x}
+              y={H - 24 - b.h}
+              width={18}
+              height={b.h}
+              rx={5}
+              fill={b.active ? 'url(#barActive)' : 'url(#barInactive)'}
+            />
+            {/* Bar top dot for active */}
+            {b.active && (
+              <Circle cx={b.x + 9} cy={H - 24 - b.h - 5} r={4} fill="#FFFFFF" fillOpacity={0.9} />
+            )}
+          </G>
+        ))}
+
+        {/* Bar baseline */}
+        <Rect x={W * 0.36} y={H - 24} width={W * 0.60} height={1.5} rx={1} fill="#FFFFFF" fillOpacity={0.18} />
+
+        {/* Trend line over bars */}
+        <Path
+          d={`M${bars[0].x+9},${H-24-bars[0].h}
+              C${bars[0].x+20},${H-24-bars[0].h}
+               ${bars[1].x-8},${H-24-bars[1].h}
+               ${bars[1].x+9},${H-24-bars[1].h}
+              C${bars[1].x+22},${H-24-bars[1].h}
+               ${bars[2].x-8},${H-24-bars[2].h}
+               ${bars[2].x+9},${H-24-bars[2].h}
+              C${bars[2].x+22},${H-24-bars[2].h}
+               ${bars[3].x-8},${H-24-bars[3].h}
+               ${bars[3].x+9},${H-24-bars[3].h}
+              C${bars[3].x+22},${H-24-bars[3].h}
+               ${bars[4].x-8},${H-24-bars[4].h}
+               ${bars[4].x+9},${H-24-bars[4].h}`}
+          stroke="#FFFFFF"
+          strokeWidth={1.8}
+          strokeOpacity={0.5}
+          fill="none"
+          strokeDasharray="3,3"
+        />
+      </Svg>
+
+      {/* Text overlay (React Native text renders better than SVG text on Android) */}
+      <View style={styles.graphicOverlay} pointerEvents="none">
+        {/* Badge */}
+        <View style={styles.graphicBadge}>
+          <Icon name="chart-bar" size={11} color="#FFFFFF" />
+          <Text style={styles.graphicBadgeText}>Live Overview</Text>
+        </View>
+
+        {/* Main metric */}
+        <Text style={styles.graphicBigNum}>{totalOrders}</Text>
+        <Text style={styles.graphicBigLabel}>Total Orders</Text>
+
+        {/* Two sub-stats */}
+        <View style={styles.graphicSubRow}>
+          <View style={styles.graphicStat}>
+            <View style={[styles.graphicDot, {backgroundColor: '#4ADE80'}]} />
+            <Text style={styles.graphicStatText}>{delivered} Delivered</Text>
+          </View>
+          <View style={styles.graphicStat}>
+            <View style={[styles.graphicDot, {backgroundColor: '#FBBF24'}]} />
+            <Text style={styles.graphicStatText}>{dispatched} Dispatched</Text>
+          </View>
+        </View>
+
+        {/* Progress pill bottom-right */}
+        <View style={styles.graphicPillWrap}>
+          <View style={styles.graphicPillTrack}>
+            <View style={[styles.graphicPillFill, {width: `${Math.min(fulfilled, 100)}%`}]} />
+          </View>
+          <Text style={styles.graphicPillLabel}>{fulfilled}% fulfilled</Text>
+        </View>
+      </View>
     </View>
   );
 }
 
-function OrderCard({code, time, desc, amount, status, statusColor, statusBg, action, actionColor, onPress}) {
+// ─── SummaryCard ──────────────────────────────────────────────────────────────
+function SummaryCard({label, value, icon, iconBg, iconColor}) {
   return (
-    <Pressable style={styles.orderCard} onPress={onPress}>
-      <View style={styles.orderTop}>
-        <Text style={styles.orderCode}>{code}</Text>
-        <View style={[styles.statusPill, {backgroundColor: statusBg}]}>
-          <Text style={[styles.statusText, {color: statusColor}]}>{status}</Text>
-        </View>
+    <View style={styles.summaryCard}>
+      <View style={[styles.summaryIconWrap, {backgroundColor: iconBg}]}>
+        <Icon name={icon} size={20} color={iconColor} />
       </View>
-      <Text style={styles.orderTime}>{time}</Text>
-      <View style={styles.orderDivider} />
-      <View style={styles.orderBottom}>
-        <View>
-          <Text style={styles.orderDesc}>{desc}</Text>
-          <Text style={styles.orderAmount}>{amount}</Text>
-        </View>
-        <Pressable>
-          <Text style={[styles.orderAction, {color: actionColor}]}>{action}</Text>
-        </Pressable>
-      </View>
-    </Pressable>
+      <Text style={styles.summaryValue}>{value}</Text>
+      <Text style={styles.summaryLabel}>{label}</Text>
+    </View>
   );
 }
 
+// ─── RecentOrderCard ──────────────────────────────────────────────────────────
+function RecentOrderCard({order, onNavigate}) {
+  const statusConfig = {
+    Delivered:   {color: C.success,   bg: C.successLight},
+    Approved:    {color: C.success,   bg: C.successLight},
+    Processing:  {color: C.info,      bg: C.infoLight},
+    Dispatched:  {color: C.purple,    bg: C.purpleLight},
+    Pending:     {color: C.warning,   bg: C.warningLight},
+    Cancelled:   {color: C.danger,    bg: C.dangerLight},
+    Rejected:    {color: C.danger,    bg: C.dangerLight},
+  };
+  const cfg = statusConfig[order.status] || {color: C.muted, bg: '#F2F2F2'};
+  const fmtDate = d => {
+    try {
+      return new Date(d).toLocaleDateString('en-IN', {day: '2-digit', month: 'short', year: 'numeric'});
+    } catch { return d; }
+  };
+  const fmtAmt = v =>
+    v ? `₹${Number(v).toLocaleString('en-IN')}` : '₹0';
+
+  return (
+    <View style={styles.orderCard}>
+      <View style={styles.orderCardHeader}>
+        <View style={styles.orderCardLeft}>
+          <Text style={styles.orderNo}>{order.orderId || order.orderNo || 'ORD-XXXX'}</Text>
+          <Text style={styles.orderDate}>{fmtDate(order.date)}</Text>
+        </View>
+        <View style={[styles.statusBadge, {backgroundColor: cfg.bg}]}>
+          <Text style={[styles.statusBadgeText, {color: cfg.color}]}>{order.status}</Text>
+        </View>
+      </View>
+      <View style={styles.orderCardDivider} />
+      <View style={styles.orderCardFooter}>
+        <Text style={styles.orderAmount}>{fmtAmt(order.amount)}</Text>
+        <Pressable
+          style={styles.viewDetailsBtn}
+          onPress={() => onNavigate('orders')}>
+          <Text style={styles.viewDetailsBtnText}>View Details</Text>
+          <Icon name="arrow-right" size={13} color={C.primary} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+// ─── BottomNavigation ─────────────────────────────────────────────────────────
 function BottomNavigation({activeTab, onChange}) {
   return (
     <View style={styles.navBar}>
       {NAV_ITEMS.map(item => {
         const isActive = item.id === activeTab;
         return (
-          <Pressable
-            key={item.id}
-            onPress={() => onChange(item.id)}
-            style={styles.navItem}>
-            <Icon 
-              name={item.icon} 
-              size={24} 
-              color={isActive ? dashColors.red : '#6B7C8A'} 
+          <Pressable key={item.id} onPress={() => onChange(item.id)} style={styles.navItem}>
+            <Icon
+              name={item.icon}
+              size={24}
+              color={isActive ? C.primary : '#AAAAAA'}
             />
             <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
               {item.label}
             </Text>
-            {isActive && <View style={styles.navActiveBar} />}
+            {isActive && <View style={styles.navUnderline} />}
           </Pressable>
         );
       })}
@@ -402,351 +522,250 @@ function BottomNavigation({activeTab, onChange}) {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollBody: {
-    paddingBottom: 80,
-  },
-  subPageContainer: {
-    flex: 1,
-  },
+  screen: {flex: 1, backgroundColor: C.primary},
+  scroll: {flex: 1, backgroundColor: C.bg},
+  scrollBody: {paddingBottom: 80},
+  subPageContainer: {flex: 1},
 
-  // ── Red Header ──
-  redHeader: {
-    backgroundColor: dashColors.red,
-    paddingHorizontal: 18,
-    paddingTop: 12,
+  loadingContainer: {flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 120},
+  loadingText: {marginTop: 12, color: C.muted, fontSize: 14},
+
+  // ── Header ──
+  header: {
+    backgroundColor: C.primary,
+    paddingHorizontal: 20,
+    paddingTop: 14,
     paddingBottom: 20,
-    marginBottom: 16,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
-  redHeaderTop: {
+  headerInner: {flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between'},
+  headerLeft: {flex: 1, paddingRight: 12},
+  companyBadge: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 18,
-  },
-  greetingName: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  greetingMeta: {
-    color: 'rgba(255,255,255,0.75)',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  iconBtn: {
-    width: 40,
-    height: 40,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+    gap: 5,
+  },
+  companyBadgeText: {color: '#FFFFFF', fontSize: 11, fontWeight: '700', letterSpacing: 0.3},
+  welcomeText: {color: '#FFFFFF', fontSize: 21, fontWeight: '800', letterSpacing: 0.2},
+  dealerMetaRow: {flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap'},
+  dealerMetaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    gap: 4,
+  },
+  dealerMetaChipText: {color: '#FFFFFF', fontSize: 11, fontWeight: '600'},
+  notifBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 2,
   },
   notifDot: {
     position: 'absolute',
-    top: 7,
-    right: 7,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FFD700',
-    borderWidth: 1,
-    borderColor: dashColors.red,
+    top: 9,
+    right: 9,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#FF3B30',
+    borderWidth: 1.5,
+    borderColor: C.primary,
   },
 
-  // ── Credit Card ──
-  creditCard: {
-    backgroundColor: 'rgba(0,0,0,0.18)',
+  // ── Sections ──
+  section: {paddingHorizontal: 16, marginTop: 20},
+  sectionRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12},
+  sectionTitle: {color: C.text, fontSize: 16, fontWeight: '800', marginBottom: 12, letterSpacing: 0.1},
+  seeAll: {color: C.primary, fontSize: 13, fontWeight: '700'},
+
+  // ── Dashboard Graphic Banner ──
+  graphicWrap: {
+    marginHorizontal: 16,
+    marginTop: 14,
     borderRadius: 18,
-    padding: 16,
-  },
-  creditCardInner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-  },
-  creditLeft: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  creditKicker: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  creditAmount: {
-    color: '#FFFFFF',
-    fontSize: 30,
-    fontWeight: '900',
-    marginTop: 4,
-  },
-  creditSub: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  progressTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    marginTop: 12,
     overflow: 'hidden',
+    shadowColor: C.primaryDark,
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    shadowOffset: {width: 0, height: 5},
+    elevation: 7,
   },
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
-    backgroundColor: '#FFFFFF',
-  },
-  dueLine: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
-  },
-  dueLabel: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 11,
-  },
-  dueDate: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  usedBadge: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    alignItems: 'center',
-    minWidth: 58,
-  },
-  usedPct: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  usedWord: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-
-  // ── Metrics ──
-  metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
-  metricCard: {
-    width: '31%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: dashColors.line,
-    ...shadow,
-  },
-  metricValue: {
-    color: dashColors.text,
-    fontSize: 26,
-    fontWeight: '900',
-  },
-  metricLabel: {
-    color: dashColors.muted,
-    fontSize: 12,
-    marginTop: 4,
-  },
-  metricSub: {
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 6,
-  },
-
-  // ── Section ──
-  section: {
-    paddingHorizontal: 16,
-    marginTop: 20,
-  },
-  sectionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    color: dashColors.text,
-    fontSize: 17,
-    fontWeight: '900',
-    marginBottom: 12,
-  },
-  seeAll: {
-    color: dashColors.red,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
-  // ── Quick Actions ──
-  qaGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+  graphicOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     justifyContent: 'flex-start',
   },
-  qaItem: {
-    width: '23%',
+  graphicBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    alignSelf: 'flex-start',
     marginBottom: 6,
   },
-  qaIcon: {
+  graphicBadgeText: {color: '#FFFFFF', fontSize: 10, fontWeight: '700', letterSpacing: 0.4},
+  graphicBigNum:   {color: '#FFFFFF', fontSize: 34, fontWeight: '900', lineHeight: 38},
+  graphicBigLabel: {color: 'rgba(255,255,255,0.75)', fontSize: 12, fontWeight: '600', marginTop: 1},
+  graphicSubRow:   {flexDirection: 'row', gap: 14, marginTop: 8},
+  graphicStat:     {flexDirection: 'row', alignItems: 'center', gap: 5},
+  graphicDot:      {width: 7, height: 7, borderRadius: 4},
+  graphicStatText: {color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '600'},
+  graphicPillWrap: {
+    position: 'absolute',
+    bottom: 14,
+    right: 18,
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  graphicPillTrack: {
+    width: 100,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.20)',
+    overflow: 'hidden',
+  },
+  graphicPillFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: '#4ADE80',
+  },
+  graphicPillLabel: {color: 'rgba(255,255,255,0.70)', fontSize: 10, fontWeight: '600'},
+
+  // ── Summary Cards — 3-per-row ──
+  summaryGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 8},
+  summaryCard: {
+    width: '31%',
+    backgroundColor: C.card,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    ...shadow,
+  },
+  summaryIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  summaryValue: {color: C.text, fontSize: 22, fontWeight: '900'},
+  summaryLabel: {color: C.muted, fontSize: 11, fontWeight: '600', marginTop: 2},
+
+  // ── Quick Actions 2-column ──
+  qaGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 10},
+  qaItem: {
+    width: '22.5%',
+    alignItems: 'center',
+  },
+  qaIconWrap: {
     width: 56,
     height: 56,
     borderRadius: 14,
-    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: dashColors.line,
+    borderColor: C.border,
     ...shadow,
   },
-  qaIconPrimary: {
-    backgroundColor: dashColors.red,
-    borderColor: dashColors.red,
-  },
   qaLabel: {
-    color: dashColors.text,
+    color: C.textSub,
     fontSize: 10,
     fontWeight: '600',
     marginTop: 6,
     textAlign: 'center',
   },
 
-  // ── Alert Banner ──
-  alertBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: dashColors.amberLight,
-    borderWidth: 1,
-    borderColor: '#F0D090',
-    borderRadius: 14,
-    padding: 14,
-    marginHorizontal: 16,
-    marginTop: 16,
-    gap: 10,
-  },
-  alertBody: {
-    flex: 1,
-  },
-  alertTitle: {
-    color: dashColors.amber,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  alertMeta: {
-    color: dashColors.amber,
-    fontSize: 12,
-    marginTop: 2,
-  },
-
   // ── Order Cards ──
   orderCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
+    backgroundColor: C.card,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: dashColors.line,
+    borderColor: C.border,
     padding: 14,
     marginBottom: 10,
     ...shadow,
   },
-  orderTop: {
+  orderCardHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start'},
+  orderCardLeft: {flex: 1, paddingRight: 10},
+  orderNo: {color: C.text, fontSize: 15, fontWeight: '800'},
+  orderDate: {color: C.muted, fontSize: 12, marginTop: 2},
+  statusBadge: {borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4},
+  statusBadgeText: {fontSize: 11, fontWeight: '700'},
+  orderCardDivider: {height: 1, backgroundColor: C.border, marginVertical: 10},
+  orderCardFooter: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
+  orderAmount: {color: C.text, fontSize: 16, fontWeight: '900'},
+  viewDetailsBtn: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  orderCode: {
-    color: dashColors.text,
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  statusPill: {
-    borderRadius: 20,
+    backgroundColor: C.primaryLight,
+    borderRadius: 8,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 6,
+    gap: 4,
   },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  orderTime: {
-    color: dashColors.muted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  orderDivider: {
-    height: 1,
-    backgroundColor: dashColors.line,
-    marginVertical: 10,
-  },
-  orderBottom: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-  },
-  orderDesc: {
-    color: dashColors.muted,
-    fontSize: 12,
-  },
-  orderAmount: {
-    color: dashColors.text,
-    fontSize: 16,
-    fontWeight: '900',
-    marginTop: 2,
-  },
-  orderAction: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
+  viewDetailsBtnText: {color: C.primary, fontSize: 12, fontWeight: '700'},
+  // ── Empty State ──
+  emptyState: {alignItems: 'center', paddingVertical: 30},
+  emptyStateText: {color: C.muted, fontSize: 14, marginTop: 8},
 
   // ── Bottom Nav ──
   navBar: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: dashColors.line,
-    paddingBottom: 20,
+    borderTopColor: '#EEEEEE',
+    paddingBottom: 18,
     paddingTop: 10,
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: {width: 0, height: -2},
+    elevation: 8,
   },
   navItem: {
     flex: 1,
     alignItems: 'center',
-    position: 'relative',
+    justifyContent: 'center',
+    gap: 4,
   },
-  navLabel: {
-    color: dashColors.muted,
-    fontSize: 10,
-    fontWeight: '700',
-    marginTop: 3,
-  },
-  navLabelActive: {
-    color: dashColors.red,
-    fontWeight: '900',
-  },
-  navActiveBar: {
+  navIconWrap: {},
+  navIconWrapActive: {},
+  navLabel: {color: '#AAAAAA', fontSize: 11, fontWeight: '500'},
+  navLabelActive: {color: C.primary, fontWeight: '700'},
+  navUnderline: {
     position: 'absolute',
     bottom: -10,
-    width: 20,
+    width: 28,
     height: 3,
     borderRadius: 2,
-    backgroundColor: dashColors.red,
+    backgroundColor: C.primary,
   },
+  navLabelActive: {color: C.primary, fontWeight: '800'},
 });
 
 export default DealerDashboard;

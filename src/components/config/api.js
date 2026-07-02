@@ -11,7 +11,7 @@ const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !=
 // ────────────────────────────────────────────────────────────────
 // Use your computer's actual IP address: 192.168.1.21
 // Find your IP: Run "ipconfig" on Windows, "ifconfig" on Mac/Linux
-const LOCAL_BACKEND_URL = 'http://192.168.1.21:5000/api/dealer';
+const LOCAL_BACKEND_URL = 'http://192.168.1.35:5000/api/dealer';
 
 // ────────────────────────────────────────────────────────────────
 // OPTION 2: PRODUCTION BACKEND (Always works)

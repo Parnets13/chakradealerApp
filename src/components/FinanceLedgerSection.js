@@ -1,521 +1,436 @@
-import React, {useState} from 'react';
+import React, {useState, useEffect, useCallback} from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {colors, shadow} from './theme';
+import invoiceService from './services/invoiceService';
+import apiService from './services/apiService';
 
-const colors = {
-  red: '#C62828',
-  text: '#212121',
-  muted: '#757575',
-  green: '#1D9E75',
-};
+// ─── format currency ──────────────────────────────────────────────────────────
+const fmt = n =>
+  typeof n === 'number'
+    ? `₹${n.toLocaleString('en-IN', {maximumFractionDigits: 0})}`
+    : '₹0';
 
-const shadow = {
-  shadowColor: '#000',
-  shadowOpacity: 0.1,
-  shadowRadius: 8,
-  shadowOffset: {width: 0, height: 2},
-  elevation: 3,
-};
-
-function FinanceLedgerSection({onBack}) {
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function FinanceLedgerSection({onBack}) {
   const [activeFilter, setActiveFilter] = useState('All');
+  const [invoices, setInvoices]         = useState([]);
+  const [summary, setSummary]           = useState(null);
+  const [loading, setLoading]           = useState(true);
+  const [refreshing, setRefreshing]     = useState(false);
+  const [error, setError]               = useState(null);
 
-  const transactions = [
-    {
-      id: 1,
-      type: 'Invoice',
-      typeColor: '#1976D2',
-      typeBg: '#E3F2FD',
-      title: 'INV-2026-4821',
-      date: '29 May 2026',
-      description: 'Coconut Oil 1L ×48',
-      amount: '-₹42,500',
-      amountColor: colors.red,
-      status: 'Unpaid',
-      statusColor: '#BA7517',
-      statusBg: '#FFF8E1',
-    },
-    {
-      id: 2,
-      type: 'Payment',
-      typeColor: colors.green,
-      typeBg: '#E8F5F0',
-      title: 'NEFT — HDFC Bank',
-      date: '22 May 2026',
-      description: 'Ref: TXN88420',
-      amount: '+₹80,000',
-      amountColor: colors.green,
-      status: 'Confirmed',
-      statusColor: colors.green,
-      statusBg: '#E8F5F0',
-    },
-    {
-      id: 3,
-      type: 'Invoice',
-      typeColor: '#1976D2',
-      typeBg: '#E3F2FD',
-      title: 'INV-2026-4803',
-      date: '28 May 2026',
-      description: 'Mixed SKU Bulk',
-      amount: '-₹1,18,000',
-      amountColor: colors.red,
-      status: 'Unpaid',
-      statusColor: '#BA7517',
-      statusBg: '#FFF8E1',
-    },
-    {
-      id: 4,
-      type: 'Credit Note',
-      typeColor: '#C62828',
-      typeBg: '#FFEBEE',
-      title: 'CN-2026-218',
-      date: '20 May 2026',
-      description: 'Return adjustment',
-      amount: '+₹18,400',
-      amountColor: colors.green,
-      status: 'Applied',
-      statusColor: colors.green,
-      statusBg: '#E8F5F0',
-    },
-    {
-      id: 5,
-      type: 'Payment',
-      typeColor: colors.green,
-      typeBg: '#E8F5F0',
-      title: 'UPI — Kumar Traders',
-      date: '10 May 2026',
-      description: 'Ref: UPI4418',
-      amount: '+₹50,000',
-      amountColor: colors.green,
-      status: 'Confirmed',
-      statusColor: colors.green,
-      statusBg: '#E8F5F0',
-    },
-  ];
+  // ── fetch both invoice list + summary in parallel ──────────────────────────
+  const fetchAll = useCallback(async (isRefresh = false) => {
+    try {
+      isRefresh ? setRefreshing(true) : setLoading(true);
+      setError(null);
 
-  const filteredTransactions = activeFilter === 'All'
-    ? transactions
-    : activeFilter === 'Invoices'
-    ? transactions.filter(t => t.type === 'Invoice')
-    : activeFilter === 'Payments'
-    ? transactions.filter(t => t.type === 'Payment')
-    : activeFilter === 'Credit Notes'
-    ? transactions.filter(t => t.type === 'Credit Note')
-    : transactions.filter(t => t.type === 'Debit');
+      const [invRes, sumRes] = await Promise.allSettled([
+        invoiceService.getInvoices(),
+        apiService.get('/finance/summary'),
+      ]);
 
-  const handleExportPDF = () => {
-    Alert.alert(
-      'Export PDF',
-      'Download transaction history as PDF?',
-      [
-        {text: 'Cancel', style: 'cancel'},
-        {text: 'Download', onPress: () => console.log('Exporting PDF')},
-      ]
-    );
-  };
+      if (invRes.status === 'fulfilled' && invRes.value?.success) {
+        setInvoices(invRes.value.data || []);
+      } else if (invRes.status === 'rejected') {
+        console.warn('invoices fetch failed:', invRes.reason?.message);
+      }
 
+      if (sumRes.status === 'fulfilled' && sumRes.value?.success) {
+        setSummary(sumRes.value.data);
+      } else if (sumRes.status === 'rejected') {
+        console.warn('summary fetch failed:', sumRes.reason?.message);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to load data');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // ── build transaction rows from invoice list ───────────────────────────────
+  const allTransactions = invoices.map(inv => {
+    const isPaid    = inv.status === 'Paid';
+    const isOverdue = inv.status === 'Overdue';
+    const isPartial = inv.status === 'Partial';
+
+    return {
+      id:          String(inv.id),
+      type:        isPaid ? 'Payment' : 'Invoice',
+      typeColor:   isPaid ? '#1D9E75' : '#1976D2',
+      typeBg:      isPaid ? '#E8F5F0' : '#E3F2FD',
+      title:       inv.invoiceNo,
+      date:        inv.date        || '—',
+      dueDate:     inv.dueDate     || '',
+      description: inv.orderNo     ? `Order: ${inv.orderNo}` : (inv.partyName || 'Invoice'),
+      amount:      isPaid ? `+${inv.amount}` : `-${inv.amount}`,
+      remaining:   inv.remainingFmt || inv.amount,
+      amountColor: isPaid ? '#1D9E75' : isOverdue ? '#C62828' : colors.red,
+      status:      inv.status,
+      statusColor: inv.statusColor || '#888',
+      statusBg:    (inv.statusColor || '#888') + '22',
+      isOverdue,
+      isPartial,
+      rawInv:      inv,
+    };
+  });
+
+  const filteredTx =
+    activeFilter === 'All'      ? allTransactions :
+    activeFilter === 'Invoices' ? allTransactions.filter(t => t.type === 'Invoice') :
+    activeFilter === 'Payments' ? allTransactions.filter(t => t.type === 'Payment') :
+    activeFilter === 'Overdue'  ? allTransactions.filter(t => t.isOverdue) :
+    allTransactions;
+
+  // ── derived numbers ────────────────────────────────────────────────────────
+  const outstanding    = summary?.outstanding    ?? 0;
+  const totalPurchases = summary?.totalPurchases ?? 0;
+  const creditNotes    = summary?.creditNotes    ?? 0;
+  const progressPct    = summary?.progressPct    ?? 0;
+  const daysLeft       = summary?.daysLeft       ?? null;
+  const nextDueDate    = summary?.nextDueDate     ?? null;
+  const totalInvoices  = summary?.totalInvoices  ?? invoices.length;
+  const paidInvoices   = summary?.paidInvoices   ?? 0;
+  const pendingInvoices= summary?.pendingInvoices ?? 0;
+
+  // ── handlers ───────────────────────────────────────────────────────────────
   const handlePayNow = () => {
-    Alert.alert(
-      'Pay Outstanding Amount',
-      'Pay ₹2,45,000 now?',
-      [
-        {text: 'Cancel', style: 'cancel'},
-        {text: 'Pay Now', onPress: () => console.log('Processing payment')},
-      ]
+    if (!outstanding) {
+      Alert.alert('No Outstanding', 'All invoices are paid. 🎉');
+      return;
+    }
+    Alert.alert('Pay Outstanding Amount', `Pay ${fmt(outstanding)} now?`, [
+      {text: 'Cancel', style: 'cancel'},
+      {text: 'Pay Now', onPress: () => Alert.alert('Processing', 'Payment initiated. You will be notified shortly.')},
+    ]);
+  };
+
+  const handleExportPDF = () =>
+    Alert.alert('Export PDF', 'Exporting your transaction history as PDF...');
+
+  // ── loading state ──────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <View style={s.container}>
+        <TopNav onBack={onBack} />
+        <View style={s.centerBox}>
+          <ActivityIndicator size="large" color={colors.red} />
+          <Text style={s.loadingText}>Loading finance data...</Text>
+        </View>
+      </View>
     );
-  };
+  }
 
-  const handleDownload = () => {
-    Alert.alert('Download', 'Downloading statement...');
-  };
-
-  const handleFilter = () => {
-    Alert.alert('Filter', 'Filter options coming soon');
-  };
-
+  // ── main render ────────────────────────────────────────────────────────────
   return (
-    <View style={styles.container}>
-      {/* Top Navigation */}
-      <View style={styles.topNav}>
-        <View style={styles.topNavLeft}>
-          <Pressable style={styles.backBtn} onPress={onBack}>
-            <Icon name="arrow-left" size={24} color="#FFFFFF" />
-          </Pressable>
-          <Text style={styles.topNavTitle}>Finance & Ledger</Text>
-        </View>
-        <View style={styles.topNavRight}>
-          <Pressable style={styles.iconBtn} onPress={handleDownload}>
-            <Icon name="download" size={24} color="#FFFFFF" />
-          </Pressable>
-          <Pressable style={styles.iconBtn} onPress={handleFilter}>
-            <Icon name="filter-variant" size={24} color="#FFFFFF" />
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Outstanding Amount Section */}
-      <View style={styles.outstandingSection}>
-        <Text style={styles.outstandingLabel}>OUTSTANDING AMOUNT</Text>
-        <Text style={styles.outstandingAmount}>₹2,45,000</Text>
-        <View style={styles.dueInfo}>
-          <Text style={styles.dueText}>Due: 10 Jun 2026 · 12 days left</Text>
-          <View style={styles.percentBadge}>
-            <Text style={styles.percentText}>49%</Text>
-          </View>
-        </View>
-        <View style={styles.progressBar}>
-          <View style={[styles.progressFill, {width: '49%'}]} />
-        </View>
-
-        {/* Summary Cards */}
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>TOTAL PURCHASES</Text>
-            <Text style={styles.summaryValue}>FY 2025-26</Text>
-          </View>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>CREDIT NOTES</Text>
-            <Text style={[styles.summaryValue, {color: colors.green}]}>₹18,400</Text>
-            <Text style={styles.summarySubtext}>Available to use</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Filter Tabs */}
-      <View style={styles.filterSection}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterRow}>
-          {['All', 'Invoices', 'Payments', 'Credit Notes', 'Debit'].map(filter => (
-            <Pressable
-              key={filter}
-              onPress={() => setActiveFilter(filter)}
-              style={[
-                styles.filterChip,
-                activeFilter === filter && styles.filterChipActive,
-              ]}>
-              <Text
-                style={[
-                  styles.filterChipText,
-                  activeFilter === filter && styles.filterChipTextActive,
-                ]}>
-                {filter}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
-
-      {/* Transaction History */}
-      <View style={styles.historyHeader}>
-        <Text style={styles.historyTitle}>Transaction history</Text>
-        <Pressable onPress={handleExportPDF}>
-          <Text style={styles.exportText}>Export PDF</Text>
-        </Pressable>
-      </View>
+    <View style={s.container}>
+      <TopNav onBack={onBack} onExport={handleExportPDF} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}>
-        {filteredTransactions.map(transaction => (
-          <TransactionCard key={transaction.id} transaction={transaction} />
-        ))}
+        contentContainerStyle={s.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => fetchAll(true)}
+            colors={[colors.red]}
+            tintColor={colors.red}
+          />
+        }>
+
+        {/* ── Outstanding Header Card ─────────────────────────────────────── */}
+        <View style={s.headerCard}>
+          <Text style={s.headerLabel}>OUTSTANDING AMOUNT</Text>
+          <Text style={s.headerAmount}>{fmt(outstanding)}</Text>
+
+          {/* due info */}
+          {nextDueDate ? (
+            <View style={s.dueRow}>
+              <View style={s.dueLeft}>
+                <Icon name="calendar-clock" size={14} color="rgba(255,255,255,0.85)" />
+                <Text style={s.dueText}>
+                  Due: {nextDueDate}
+                  {daysLeft != null
+                    ? daysLeft > 0
+                      ? `  ·  ${daysLeft}d left`
+                      : daysLeft === 0
+                        ? '  ·  Due today'
+                        : `  ·  ${Math.abs(daysLeft)}d overdue`
+                    : ''}
+                </Text>
+              </View>
+              <View style={s.pctBadge}>
+                <Text style={s.pctText}>{progressPct}%</Text>
+              </View>
+            </View>
+          ) : null}
+
+          {/* progress bar */}
+          <View style={s.progressBar}>
+            <View style={[s.progressFill, {width: `${Math.min(progressPct, 100)}%`}]} />
+          </View>
+
+          {/* 3 mini stat boxes */}
+          <View style={s.statRow}>
+            <View style={s.statBox}>
+              <Text style={s.statLabel}>TOTAL</Text>
+              <Text style={s.statValue}>{fmt(totalPurchases)}</Text>
+              <Text style={s.statSub}>Purchases</Text>
+            </View>
+            <View style={[s.statBox, s.statBoxMid]}>
+              <Text style={s.statLabel}>INVOICES</Text>
+              <Text style={s.statValue}>{totalInvoices}</Text>
+              <Text style={s.statSub}>{paidInvoices} paid · {pendingInvoices} due</Text>
+            </View>
+            <View style={s.statBox}>
+              <Text style={s.statLabel}>CREDIT</Text>
+              <Text style={[s.statValue, {color: '#A5D6A7'}]}>{fmt(creditNotes)}</Text>
+              <Text style={s.statSub}>Available</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ── Filter chips ─────────────────────────────────────────────────── */}
+        <View style={s.filterBar}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>
+            {['All', 'Invoices', 'Payments', 'Overdue'].map(f => (
+              <Pressable
+                key={f}
+                onPress={() => setActiveFilter(f)}
+                style={[s.chip, activeFilter === f && s.chipActive]}>
+                <Text style={[s.chipText, activeFilter === f && s.chipTextActive]}>{f}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* ── History header ─────────────────────────────────────────────── */}
+        <View style={s.historyHeader}>
+          <Text style={s.historyTitle}>Transaction History</Text>
+          <Pressable onPress={handleExportPDF}>
+            <Text style={s.exportText}>Export PDF</Text>
+          </Pressable>
+        </View>
+
+        {/* ── Error ─────────────────────────────────────────────────────── */}
+        {error ? (
+          <View style={s.centerBox}>
+            <Icon name="alert-circle-outline" size={40} color={colors.red} />
+            <Text style={s.errorText}>{error}</Text>
+            <Pressable style={s.retryBtn} onPress={() => fetchAll()}>
+              <Text style={s.retryText}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : filteredTx.length === 0 ? (
+          <View style={s.centerBox}>
+            <Icon name="file-document-outline" size={40} color={colors.muted} />
+            <Text style={s.emptyText}>No transactions found</Text>
+          </View>
+        ) : (
+          filteredTx.map(t => <TxCard key={t.id} tx={t} />)
+        )}
+
+        <View style={{height: 90}} />
       </ScrollView>
 
-      {/* Pay Now Button */}
-      <View style={styles.payNowContainer}>
-        <Pressable style={styles.payNowBtn} onPress={handlePayNow}>
-          <Icon name="credit-card" size={24} color="#FFFFFF" />
-          <Text style={styles.payNowText}>Pay Now — ₹2,45,000</Text>
-          <Icon name="arrow-down" size={24} color="#FFFFFF" />
-        </Pressable>
-      </View>
+      {/* ── Pay Now sticky footer ─────────────────────────────────────────── */}
+      {outstanding > 0 && (
+        <View style={s.payBar}>
+          <Pressable style={s.payBtn} onPress={handlePayNow}>
+            <Icon name="credit-card-outline" size={18} color="#FFF" />
+            <Text style={s.payText}>Pay Now — {fmt(outstanding)}</Text>
+            <Icon name="chevron-right" size={16} color="#FFF" />
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
 
-function TransactionCard({transaction}) {
+// ─── Top Nav ──────────────────────────────────────────────────────────────────
+function TopNav({onBack, onExport}) {
   return (
-    <View style={styles.transactionCard}>
-      <View style={styles.transactionHeader}>
-        <View style={[styles.typeBadge, {backgroundColor: transaction.typeBg}]}>
-          <Text style={[styles.typeText, {color: transaction.typeColor}]}>
-            {transaction.type}
-          </Text>
+    <View style={s.topNav}>
+      <Pressable style={s.navBtn} onPress={onBack}>
+        <Icon name="arrow-left" size={22} color="#FFF" />
+      </Pressable>
+      <View style={s.navCenter}>
+        <Icon name="chart-line" size={18} color="#FFF" />
+        <Text style={s.navTitle}>Finance & Ledger</Text>
+      </View>
+      {onExport ? (
+        <Pressable style={s.navBtn} onPress={onExport}>
+          <Icon name="download" size={20} color="#FFF" />
+        </Pressable>
+      ) : (
+        <View style={s.navBtn} />
+      )}
+    </View>
+  );
+}
+
+// ─── Transaction Card ─────────────────────────────────────────────────────────
+function TxCard({tx}) {
+  return (
+    <View style={s.txCard}>
+      {/* top row: type badge + amount */}
+      <View style={s.txTop}>
+        <View style={[s.typeBadge, {backgroundColor: tx.typeBg}]}>
+          <Text style={[s.typeText, {color: tx.typeColor}]}>{tx.type}</Text>
         </View>
-        <Text style={[styles.transactionAmount, {color: transaction.amountColor}]}>
-          {transaction.amount}
-        </Text>
+        <Text style={[s.txAmount, {color: tx.amountColor}]}>{tx.amount}</Text>
       </View>
 
-      <Text style={styles.transactionTitle}>{transaction.title}</Text>
-      <Text style={styles.transactionDescription}>
-        {transaction.date} · {transaction.description}
+      {/* invoice number */}
+      <Text style={s.txTitle}>{tx.title}</Text>
+
+      {/* date + description */}
+      <Text style={s.txDesc}>
+        {tx.date}{tx.description ? `  ·  ${tx.description}` : ''}
       </Text>
 
-      <View style={[styles.statusBadge, {backgroundColor: transaction.statusBg}]}>
-        <Text style={[styles.statusText, {color: transaction.statusColor}]}>
-          {transaction.status}
-        </Text>
+      {/* due date (if pending/overdue) */}
+      {tx.dueDate && tx.type === 'Invoice' ? (
+        <View style={s.txDueRow}>
+          <Icon name="calendar-alert" size={12} color={tx.isOverdue ? '#C62828' : colors.muted} />
+          <Text style={[s.txDueText, tx.isOverdue && {color: '#C62828'}]}>
+            Due: {tx.dueDate}
+            {tx.type === 'Invoice' && tx.remaining && tx.status !== 'Paid'
+              ? `  ·  Balance: ${tx.remaining}` : ''}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* status badge */}
+      <View style={[s.statusBadge, {backgroundColor: tx.statusBg}]}>
+        <Text style={[s.statusText, {color: tx.statusColor}]}>{tx.status}</Text>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const s = StyleSheet.create({
+  container:   {flex: 1, backgroundColor: '#F5F5F5'},
+  scrollContent:{paddingBottom: 16},
+
+  // ── nav
   topNav: {
     backgroundColor: colors.red,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    ...shadow,
-  },
-  topNavLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topNavTitle: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  topNavRight: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  outstandingSection: {
-    backgroundColor: colors.red,
-    padding: 20,
-    paddingBottom: 24,
-  },
-  outstandingLabel: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  outstandingAmount: {
-    color: '#FFFFFF',
-    fontSize: 48,
-    fontWeight: '900',
-    marginBottom: 12,
-  },
-  dueInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  dueText: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  percentBadge: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  percentText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 20,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 4,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  summaryCard: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 16,
-    padding: 16,
-  },
-  summaryLabel: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  summaryValue: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-  summarySubtext: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  filterSection: {
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  filterRow: {
-    paddingHorizontal: 20,
-    gap: 8,
-  },
-  filterChip: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: '#F5F5F5',
-    marginRight: 8,
-  },
-  filterChipActive: {
-    backgroundColor: colors.red,
-  },
-  filterChipText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.muted,
-  },
-  filterChipTextActive: {
-    color: '#FFFFFF',
-  },
-  historyHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-  },
-  historyTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: colors.text,
-  },
-  exportText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.red,
-  },
-  content: {
-    padding: 20,
-    paddingBottom: 100,
-  },
-  transactionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    justifyContent: 'space-between',
     ...shadow,
   },
-  transactionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+  navBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  typeBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  typeText: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  transactionAmount: {
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  transactionTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  transactionDescription: {
-    fontSize: 13,
-    color: colors.muted,
-    marginBottom: 12,
-  },
-  statusBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  payNowContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 20,
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-    ...shadow,
-  },
-  payNowBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    backgroundColor: colors.red,
-    paddingVertical: 16,
-    borderRadius: 16,
-  },
-  payNowText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '900',
-  },
-});
+  navCenter: {flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'center'},
+  navTitle:  {color: '#FFF', fontSize: 17, fontWeight: '800'},
 
-export default FinanceLedgerSection;
+  // ── header card
+  headerCard: {
+    backgroundColor: colors.red,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 18,
+  },
+  headerLabel: {
+    color: 'rgba(255,255,255,0.8)', fontSize: 10,
+    fontWeight: '700', letterSpacing: 1.2, marginBottom: 4,
+  },
+  headerAmount: {color: '#FFF', fontSize: 34, fontWeight: '900', marginBottom: 10},
+  dueRow:       {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10},
+  dueLeft:      {flexDirection: 'row', alignItems: 'center', gap: 5},
+  dueText:      {color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: '600'},
+  pctBadge:     {backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8},
+  pctText:      {color: '#FFF', fontSize: 12, fontWeight: '800'},
+  progressBar:  {height: 5, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 3, overflow: 'hidden', marginBottom: 14},
+  progressFill: {height: '100%', backgroundColor: '#FFF', borderRadius: 3},
+
+  // ── 3-box stat row
+  statRow:   {flexDirection: 'row', gap: 8},
+  statBox:   {flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: 10},
+  statBoxMid:{},
+  statLabel: {color: 'rgba(255,255,255,0.65)', fontSize: 8, fontWeight: '700', letterSpacing: 0.8, marginBottom: 3},
+  statValue: {color: '#FFF', fontSize: 14, fontWeight: '900', marginBottom: 1},
+  statSub:   {color: 'rgba(255,255,255,0.75)', fontSize: 9, fontWeight: '600'},
+
+  // ── filter bar
+  filterBar: {
+    backgroundColor: '#FFF', paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: '#EBEBEB',
+  },
+  filterRow:     {paddingHorizontal: 16, gap: 8},
+  chip:          {paddingHorizontal: 14, paddingVertical: 6, borderRadius: 14, backgroundColor: '#F2F2F2', marginRight: 6},
+  chipActive:    {backgroundColor: colors.red},
+  chipText:      {fontSize: 12, fontWeight: '700', color: '#757575'},
+  chipTextActive:{color: '#FFF'},
+
+  // ── history header
+  historyHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#FFF',
+  },
+  historyTitle: {fontSize: 14, fontWeight: '900', color: '#212121'},
+  exportText:   {fontSize: 12, fontWeight: '700', color: colors.red},
+
+  // ── transaction card
+  txCard: {
+    backgroundColor: '#FFF', borderRadius: 12,
+    padding: 14, marginHorizontal: 16, marginTop: 10,
+    ...shadow,
+  },
+  txTop:     {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6},
+  typeBadge: {paddingHorizontal: 9, paddingVertical: 3, borderRadius: 7},
+  typeText:  {fontSize: 11, fontWeight: '800'},
+  txAmount:  {fontSize: 17, fontWeight: '900'},
+  txTitle:   {fontSize: 14, fontWeight: '900', color: '#212121', marginBottom: 2},
+  txDesc:    {fontSize: 12, color: '#757575', marginBottom: 6},
+  txDueRow:  {flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8},
+  txDueText: {fontSize: 11, color: '#757575', fontWeight: '600'},
+  statusBadge:{alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 7},
+  statusText: {fontSize: 11, fontWeight: '800'},
+
+  // ── pay now bar
+  payBar: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    paddingHorizontal: 16, paddingVertical: 10,
+    backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#EBEBEB',
+    ...shadow,
+  },
+  payBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: colors.red,
+    paddingVertical: 12, borderRadius: 12,
+  },
+  payText: {color: '#FFF', fontSize: 15, fontWeight: '800'},
+
+  // ── states
+  centerBox:   {alignItems: 'center', justifyContent: 'center', padding: 32, minHeight: 160},
+  loadingText: {marginTop: 10, color: '#757575', fontSize: 14},
+  emptyText:   {marginTop: 10, color: '#757575', fontSize: 14},
+  errorText:   {marginTop: 10, color: colors.red, fontSize: 14, textAlign: 'center'},
+  retryBtn:    {marginTop: 12, backgroundColor: colors.red, paddingHorizontal: 22, paddingVertical: 9, borderRadius: 8},
+  retryText:   {color: '#FFF', fontWeight: '700'},
+
+  // muted ref (used in txDueRow)
+  muted: {color: '#757575'},
+});

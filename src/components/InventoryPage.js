@@ -101,40 +101,38 @@ function InventoryPage({ onBack }) {
         
         console.log('=== 📦 Final mapped products:', mappedProducts.length, 'items');
         
-        // Calculate stats, but use backend warehouse count if available
+        // Calculate stats
         console.log('=== 📊 Calculating stats from actual products ===');
         
         const totalSKU = mappedProducts.length;
         let criticalItems = 0;
-        let activeItems = 0;
-        let deadItems = 0;
         let totalUnits = 0;
         
-        // Get unique warehouses from inventory items
+        // Count unique warehouses from actual data (ignore 'Main Warehouse' fallback)
         const uniqueWarehouses = new Set();
         mappedProducts.forEach(item => {
           totalUnits += item.stock;
-          
           if (item.adminStatus === 'Critical') criticalItems++;
-          if (item.adminStatus === 'Active') activeItems++;
-          if (item.adminStatus === 'Dead') deadItems++;
-          
-          if (item.warehouse) {
+          // Only count warehouse if it's a real name (not the fallback)
+          if (item.warehouse && item.warehouse !== 'Main Warehouse') {
             uniqueWarehouses.add(item.warehouse);
           }
         });
         
-        // Use backend warehouse count if available, otherwise use unique count from items
-        let warehousesCount = uniqueWarehouses.size;
+        // Prefer backend-provided warehouse count (most accurate)
+        // Fall back to unique count from items, then 1 if any items exist
+        let warehousesCount = 0;
         if (response.statistics && response.statistics.warehouses) {
           warehousesCount = response.statistics.warehouses;
+        } else if (uniqueWarehouses.size > 0) {
+          warehousesCount = uniqueWarehouses.size;
+        } else if (mappedProducts.length > 0) {
+          warehousesCount = 1;
         }
         
         console.log('📊 Stats calculated:', { 
           totalSKU, 
           criticalItems, 
-          activeItems, 
-          deadItems, 
           totalUnits, 
           warehousesCount,
           uniqueWarehouses: Array.from(uniqueWarehouses)
