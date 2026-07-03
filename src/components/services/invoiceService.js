@@ -1,44 +1,53 @@
 import apiService from './apiService';
 
+/**
+ * Maps UI filter chip label → backend query param.
+ * Backend GET /api/dealer/invoices accepts:
+ *   paymentStatus = Paid | Pending | Partial
+ *   status        = Overdue
+ */
+const buildFilterParams = (filter) => {
+  switch (filter) {
+    case 'Paid':    return { paymentStatus: 'Paid' };
+    case 'Pending': return { paymentStatus: 'Pending' };
+    case 'Overdue': return { status: 'Overdue' };
+    case 'Partial': return { paymentStatus: 'Partial' };
+    default:        return {};   // 'All' — no filter
+  }
+};
+
 class InvoiceService {
-  // Get all invoices
-  async getInvoices(params = {}) {
-    try {
-      const response = await apiService.get('/invoices', params);
-      return response;
-    } catch (error) {
-      throw error;
-    }
+  /**
+   * Fetch all invoices for the logged-in dealer.
+   *
+   * @param {object} opts
+   * @param {string} [opts.filter]  - 'All' | 'Paid' | 'Pending' | 'Overdue'
+   * @param {string} [opts.search]  - free-text search string
+   * @param {number} [opts.page]    - page number (1-based)
+   * @param {number} [opts.limit]   - results per page
+   */
+  async getInvoices({ filter = 'All', search, page, limit } = {}) {
+    const params = { ...buildFilterParams(filter) };
+    if (search) params.search = search;
+    if (page)   params.page   = page;
+    if (limit)  params.limit  = limit;
+    // Endpoint: GET /invoices   (apiService prepends API_BASE_URL = .../api/dealer)
+    return apiService.get('/invoices', params);
   }
 
-  // Get invoice by ID
+  /** Fetch one invoice by its MongoDB _id */
   async getInvoiceById(id) {
-    try {
-      const response = await apiService.get(`/invoices/${id}`);
-      return response;
-    } catch (error) {
-      throw error;
-    }
+    return apiService.get(`/invoices/${id}`);
   }
 
-  // Download invoice PDF
+  /** Download / get PDF URL */
   async downloadInvoice(id) {
-    try {
-      const response = await apiService.get(`/invoices/${id}/download`);
-      return response;
-    } catch (error) {
-      throw error;
-    }
+    return apiService.get(`/invoices/${id}/download`);
   }
 
-  // Pay invoice
-  async payInvoice(id, paymentData) {
-    try {
-      const response = await apiService.post(`/invoices/${id}/pay`, paymentData);
-      return response;
-    } catch (error) {
-      throw error;
-    }
+  /** Record payment for an invoice */
+  async payInvoice(id, paymentData = {}) {
+    return apiService.post(`/invoices/${id}/pay`, paymentData);
   }
 }
 

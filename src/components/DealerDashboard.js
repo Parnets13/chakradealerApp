@@ -17,18 +17,22 @@ import Svg, {Circle, Defs, LinearGradient, Path, Stop, Rect, G} from 'react-nati
 const {width: SCREEN_W} = Dimensions.get('window');
 
 import {shadow} from './theme';
+import CartScreen from './CartScreen';
+import CheckoutScreen from './CheckoutScreen';
 import OrdersPage from './OrdersPage';
 import InventoryPage from './InventoryPage';
 import DispatchTrackingPage from './DispatchTrackingPage';
 import ProfilePage from './ProfilePage';
 import FinanceLedgerSection from './FinanceLedgerSection';
-import ReturnsComplaintsSection from './ReturnsComplaintsSection';
+import ReturnsPage from './ReturnsPage';
 import ReportsDashboardSection from './ReportsDashboardSection';
 import SupportPage from './SupportPage';
 import NotificationsPage from './NotificationsPage';
 import CategoryPage from './CategoryPage';
 import InvoicesPage from './InvoicesPage';
 import PlaceOrderPage from './PlaceOrderPage';
+import DealerReceiptsPage from './DealerReceiptsPage';
+import DealerLedgerPage from './DealerLedgerPage';
 
 // ─── Design Tokens — Sri Chakra Industries Brand ─────────────────────────────
 const C = {
@@ -72,6 +76,8 @@ const NAV_ITEMS = [
 function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange}) {
   const [activeTab, setActiveTab] = useState('home');
   const [activePage, setActivePage] = useState(externalActivePage || 'home');
+  // Cart data passed from CategoryPage → CartScreen → CheckoutScreen
+  const [cartData, setCartData] = useState(null);
 
   React.useEffect(() => {
     if (externalActivePage) {
@@ -101,14 +107,17 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
           {activePage === 'stock'         && <InventoryPage onBack={handleBackToHome} />}
           {activePage === 'dispatch'      && <DispatchTrackingPage onBack={handleBackToHome} />}
           {activePage === 'profile'       && <ProfilePage onLogout={onLogout} onBack={handleBackToHome} />}
-          {activePage === 'ledger'        && <FinanceLedgerSection onBack={handleBackToHome} />}
-          {activePage === 'returns'       && <ReturnsComplaintsSection onBack={handleBackToHome} />}
+          {activePage === 'ledger'        && <DealerLedgerPage onBack={handleBackToHome} />}
+          {activePage === 'returns'       && <ReturnsPage onBack={handleBackToHome} />}
           {activePage === 'reports'       && <ReportsDashboardSection onBack={handleBackToHome} />}
           {activePage === 'support'       && <SupportPage onBack={handleBackToHome} />}
           {activePage === 'notifications' && <NotificationsPage onBack={handleBackToHome} />}
-          {activePage === 'category'      && <CategoryPage onBack={handleBackToHome} />}
+          {activePage === 'category'      && <CategoryPage onBack={handleBackToHome} onCartPress={() => handleNavigate('cart')} />}
+          {activePage === 'cart'          && <CartScreen onBack={() => handleNavigate('category')} onCheckout={(cart, grand, sub, gst) => { setCartData({ cart, grand, sub, gst }); handleNavigate('checkout'); }} />}
+          {activePage === 'checkout'      && cartData && <CheckoutScreen cart={cartData.cart} grandTotal={cartData.grand} subTotal={cartData.sub} totalGst={cartData.gst} onBack={(target) => handleNavigate(target || 'cart')} onOrderSuccess={() => handleNavigate('orders')} onOrderFail={() => {}} />}
           {activePage === 'invoices'      && <InvoicesPage onBack={handleBackToHome} />}
           {activePage === 'placeorder'    && <PlaceOrderPage onBack={handleBackToHome} />}
+          {activePage === 'receipts'      && <DealerReceiptsPage onBack={handleBackToHome} />}
         </View>
         <BottomNavigation activeTab={activeTab} onChange={tab => {
           setActiveTab(tab);
@@ -164,12 +173,21 @@ function HomePage({onNavigate}) {
   const dealerCode     = dealer.dealerCode      || 'N/A';
   const lastLogin      = dealer.lastLogin        || 'First login';
 
-  const totalOrders    = stats.totalOrders       || 0;
-  const pendingApproval= stats.pendingApproval   || stats.pendingOrders || 0;
-  const approved       = stats.approved          || 0;
-  const processing     = stats.processing        || 0;
-  const dispatched     = stats.dispatched        || 0;
-  const delivered      = stats.deliveredOrders   || stats.delivered || 0;
+  const totalOrders      = stats.totalOrders              || 0;
+  const pendingApproval  = stats.pendingApproval || stats.pendingOrders || 0;
+  const approved         = stats.approved                 || 0;
+  const processing       = stats.processing               || 0;
+  const dispatched       = stats.dispatched               || 0;
+  const delivered        = stats.deliveredOrders || stats.delivered || 0;
+  const monthOrders      = stats.monthOrders              || 0;
+  const monthlyValue     = stats.monthlyPurchaseAmount    || 0;
+  const totalValue       = stats.totalPurchaseValue       || 0;
+  const avgOrder         = stats.avgOrderValue            || 0;
+  const monthGrowth      = stats.monthGrowth              || 0;
+  const pendingInvoices  = stats.pendingInvoices          || 0;
+  const availableCredit  = dealer.availableCredit         || stats.availableCredit || 0;
+  const creditLimit      = dealer.creditLimit             || stats.creditLimit || 0;
+  const usedCredit       = dealer.usedCredit              || stats.usedCredit || 0;
 
   if (loading) {
     return (
@@ -180,16 +198,16 @@ function HomePage({onNavigate}) {
     );
   }
 
-  // ── Quick Actions (8 items, no Reports, no Support) ──
+  // ── Quick Actions (9 items) ──
   const quickActions = [
     {id: 'placeorder', label: 'Place Order',   icon: 'cart-plus',        nav: 'placeorder', color: C.primary,  bg: C.primaryLight},
     {id: 'orders',     label: 'My Orders',     icon: 'clipboard-list',   nav: 'orders',     color: C.success,  bg: C.successLight},
     {id: 'category',   label: 'Categories',    icon: 'view-grid',        nav: 'category',   color: C.purple,   bg: C.purpleLight},
-    {id: 'inventory',  label: 'Inventory',     icon: 'package-variant',  nav: 'inventory',  color: C.teal,     bg: C.tealLight},
+    {id: 'Stock',      label: 'Stock',         icon: 'package-variant',  nav: 'stock',  color: C.teal,     bg: C.tealLight},
     {id: 'tracking',   label: 'Track Orders',  icon: 'truck-delivery',   nav: 'dispatch',   color: C.info,     bg: C.infoLight},
     {id: 'ledger',     label: 'Ledger',        icon: 'book-open-variant',nav: 'ledger',     color: C.warning,  bg: C.warningLight},
     {id: 'invoices',   label: 'Invoices',      icon: 'file-document',    nav: 'invoices',   color: C.primaryDark, bg: C.primaryLight},
-    {id: 'returns',    label: 'Returns',       icon: 'keyboard-return',  nav: 'returns',    color: C.danger,   bg: C.dangerLight},
+    {id: 'receipts',   label: 'Receipts',      icon: 'cash-check',       nav: 'receipts',   color: '#059669',  bg: '#D1FAE5'},    {id: 'returns',    label: 'Returns',       icon: 'keyboard-return',  nav: 'returns',    color: C.danger,   bg: C.dangerLight},
   ];
 
   return (
@@ -231,6 +249,9 @@ function HomePage({onNavigate}) {
         totalOrders={totalOrders}
         delivered={delivered}
         dispatched={dispatched}
+        monthlyValue={monthlyValue}
+        monthGrowth={monthGrowth}
+        monthOrders={monthOrders}
       />
 
       {/* ══════════════════════════════════════════
@@ -239,12 +260,12 @@ function HomePage({onNavigate}) {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Dashboard Summary</Text>
         <View style={styles.summaryGrid}>
-          <SummaryCard label="Total Orders"  value={totalOrders}     icon="receipt"                 iconBg={C.primaryLight} iconColor={C.primary}  />
-          <SummaryCard label="Pending"       value={pendingApproval} icon="clock-outline"           iconBg={C.warningLight} iconColor={C.warning}  />
-          <SummaryCard label="Approved"      value={approved}        icon="check-decagram"          iconBg={C.successLight} iconColor={C.success}  />
-          <SummaryCard label="Processing"    value={processing}      icon="progress-clock"          iconBg={C.infoLight}    iconColor={C.info}     />
-          <SummaryCard label="Dispatched"    value={dispatched}      icon="truck-delivery"          iconBg={C.purpleLight}  iconColor={C.purple}   />
-          <SummaryCard label="Delivered"     value={delivered}       icon="home-map-marker"         iconBg={C.tealLight}    iconColor={C.teal}     />
+          <SummaryCard label="Total Orders"  value={totalOrders}     icon="receipt"           iconBg={C.primaryLight} iconColor={C.primary}  />
+          <SummaryCard label="Pending"       value={pendingApproval} icon="clock-outline"     iconBg={C.warningLight} iconColor={C.warning}  />
+          <SummaryCard label="Approved"      value={approved}        icon="check-decagram"    iconBg={C.successLight} iconColor={C.success}  />
+          <SummaryCard label="Processing"    value={processing}      icon="progress-clock"    iconBg={C.infoLight}    iconColor={C.info}     />
+          <SummaryCard label="Dispatched"    value={dispatched}      icon="truck-delivery"    iconBg={C.purpleLight}  iconColor={C.purple}   />
+          <SummaryCard label="Delivered"     value={delivered}       icon="home-map-marker"   iconBg={C.tealLight}    iconColor={C.teal}     />
         </View>
       </View>
 
@@ -300,12 +321,9 @@ function HomePage({onNavigate}) {
 }
 
 // ─── DashboardGraphic ─────────────────────────────────────────────────────────
-function DashboardGraphic({totalOrders, delivered, dispatched}) {
-  const W = SCREEN_W - 32;  // 16px margin on each side
+function DashboardGraphic({totalOrders, delivered, dispatched, monthlyValue, monthGrowth, monthOrders}) {
+  const W = SCREEN_W - 32;
   const H = 138;
-  const fulfilled = totalOrders > 0
-    ? Math.round(((delivered + dispatched) / totalOrders) * 100)
-    : 0;
 
   // Bar chart data — 5 weekly bars with real total as peak
   const barH   = H - 44;
@@ -424,14 +442,36 @@ function DashboardGraphic({totalOrders, delivered, dispatched}) {
             <View style={[styles.graphicDot, {backgroundColor: '#FBBF24'}]} />
             <Text style={styles.graphicStatText}>{dispatched} Dispatched</Text>
           </View>
+          {monthOrders > 0 && (
+            <View style={styles.graphicStat}>
+              <View style={[styles.graphicDot, {backgroundColor: '#60A5FA'}]} />
+              <Text style={styles.graphicStatText}>{monthOrders} This Month</Text>
+            </View>
+          )}
         </View>
 
-        {/* Progress pill bottom-right */}
+        {/* Monthly value + growth pill */}
         <View style={styles.graphicPillWrap}>
-          <View style={styles.graphicPillTrack}>
-            <View style={[styles.graphicPillFill, {width: `${Math.min(fulfilled, 100)}%`}]} />
-          </View>
-          <Text style={styles.graphicPillLabel}>{fulfilled}% fulfilled</Text>
+          {monthlyValue > 0 && (
+            <Text style={[styles.graphicPillLabel, {fontSize: 11, fontWeight: '700', marginBottom: 2}]}>
+              ₹{monthlyValue >= 100000
+                ? (monthlyValue / 100000).toFixed(1) + 'L'
+                : (monthlyValue / 1000).toFixed(1) + 'K'} this month
+              {monthGrowth !== 0 ? (monthGrowth >= 0 ? ` ↑${monthGrowth}%` : ` ↓${Math.abs(monthGrowth)}%`) : ''}
+            </Text>
+          )}
+          {totalOrders > 0 && (
+            <>
+              <View style={styles.graphicPillTrack}>
+                <View style={[styles.graphicPillFill, {
+                  width: `${Math.min(Math.round(((delivered + dispatched) / totalOrders) * 100), 100)}%`
+                }]} />
+              </View>
+              <Text style={styles.graphicPillLabel}>
+                {totalOrders > 0 ? Math.round(((delivered + dispatched) / totalOrders) * 100) : 0}% fulfilled
+              </Text>
+            </>
+          )}
         </View>
       </View>
     </View>
@@ -674,6 +714,74 @@ const styles = StyleSheet.create({
   },
   summaryValue: {color: C.text, fontSize: 22, fontWeight: '900'},
   summaryLabel: {color: C.muted, fontSize: 11, fontWeight: '600', marginTop: 2},
+
+  // ── Financial Overview Strip ──
+  financeStrip: {
+    flexDirection: 'row',
+    backgroundColor: C.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 14,
+    ...shadow,
+  },
+  financeCard: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  financeDiv: {
+    width: 1,
+    backgroundColor: C.border,
+    marginHorizontal: 8,
+  },
+  financeVal: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: C.primary,
+    textAlign: 'center',
+  },
+  financeLbl: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: C.muted,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  growthBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    marginTop: 4,
+  },
+  growthText: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  creditBarWrap: {
+    marginTop: 5,
+    alignItems: 'center',
+    width: '100%',
+  },
+  creditBarTrack: {
+    width: '90%',
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: C.border,
+    overflow: 'hidden',
+  },
+  creditBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  creditBarLabel: {
+    fontSize: 8,
+    color: C.muted,
+    fontWeight: '600',
+    marginTop: 2,
+  },
 
   // ── Quick Actions 2-column ──
   qaGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 10},

@@ -11,7 +11,8 @@ const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !=
 // ────────────────────────────────────────────────────────────────
 // Use your computer's actual IP address: 192.168.1.21
 // Find your IP: Run "ipconfig" on Windows, "ifconfig" on Mac/Linux
-const LOCAL_BACKEND_URL = 'http://192.168.1.35:5000/api/dealer';
+// NOTE: Backend runs on PORT 5001 (see chakraIndustries-backend/.env)
+const LOCAL_BACKEND_URL = 'http://192.168.1.21:5001/api/dealer';
 
 // ────────────────────────────────────────────────────────────────
 // OPTION 2: PRODUCTION BACKEND (Always works)
@@ -23,7 +24,6 @@ const PRODUCTION_BACKEND_URL = 'https://chakraindustries-backend.onrender.com/ap
 // ────────────────────────────────────────────────────────────────
 // Change this to switch between local and production
 const USE_LOCAL_BACKEND = true;  // Set to false to use production
-
 // Auto-select based on environment
 const getApiBaseURL = () => {
   if (!isDev) {
@@ -117,12 +117,12 @@ export const API_ENDPOINTS = {
     DOWNLOAD: '/invoices/:id/download'
   },
   
-  // Returns
+  // Returns — hits Admin's /api/returns (MaterialReturn model)
+  // returnService uses ADMIN_API_BASE_URL, not the dealer base URL
   RETURNS: {
-    LIST: '/returns',
-    CREATE: '/returns/create',
-    DETAILS: '/returns/:id',
-    TRACK: '/returns/:id/track'
+    LIST:    '/returns',       // GET  /api/returns → getAll (stage, search filters)
+    CREATE:  '/returns',       // POST /api/returns → create
+    DETAILS: '/returns/:id',   // GET  /api/returns/:id
   },
   
   // Dispatch & Tracking
@@ -136,5 +136,14 @@ export const API_ENDPOINTS = {
     DASHBOARD: '/reports/dashboard',
     SALES: '/reports/sales',
     INVENTORY: '/reports/inventory'
+  },
+
+  // Finance (Dealer-specific — uses protectDealer JWT, no dealerId param needed)
+  // Full URLs (dev):  http://192.168.1.21:5001/api/dealer/finance/receipts
+  //                   http://192.168.1.21:5001/api/dealer/finance/ledger
+  FINANCE: {
+    RECEIPTS: '/finance/receipts',
+    LEDGER:   '/finance/ledger',
+    SUMMARY:  '/finance/summary',
   }
 };

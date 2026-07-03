@@ -1,7 +1,11 @@
 import apiService from './apiService';
 
 class OrderService {
-  // Get all orders
+  /**
+   * Get all orders for the authenticated dealer.
+   * Hits: GET /api/dealer/orders
+   * Returns dealer-specific SalesOrders (filtered by dealerId/customer/erpClientId).
+   */
   async getOrders(params = {}) {
     try {
       const response = await apiService.get('/orders', params);
@@ -11,7 +15,10 @@ class OrderService {
     }
   }
 
-  // Get order by ID
+  /**
+   * Get order detail by orderId or mongodbId.
+   * Hits: GET /api/dealer/orders/:id
+   */
   async getOrderById(id) {
     try {
       const response = await apiService.get(`/orders/${id}`);
@@ -21,11 +28,19 @@ class OrderService {
     }
   }
 
-  // Create new order
-  async createOrder(orderData) {
+  /**
+   * Create new order from cart items.
+   * Hits: POST /api/dealer/orders/create
+   * Passes idempotency key as header to prevent duplicate orders.
+   */
+  async createOrder(orderData, idempotencyKey) {
     try {
-      const response = await apiService.post('/orders/create', orderData);
-      return response;
+      const headers = idempotencyKey ? { 'X-Idempotency-Key': idempotencyKey } : {};
+      return await apiService.request('/orders/create', {
+        method: 'POST',
+        body: orderData,
+        headers,
+      });
     } catch (error) {
       throw error;
     }
@@ -41,7 +56,7 @@ class OrderService {
     }
   }
 
-  // Track order
+  // Track order — returns status + docket tracking info
   async trackOrder(id) {
     try {
       const response = await apiService.get(`/orders/${id}/track`);
