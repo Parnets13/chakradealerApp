@@ -53,7 +53,7 @@ const fmtDate = (d) => {
 };
 
 // ── DispatchTrackingPage ──────────────────────────────────────────────────────
-function DispatchTrackingPage({ onBack }) {
+function DispatchTrackingPage({ onBack, initialOrderId }) {
   const [activeFilter, setActiveFilter]   = useState('All Orders');
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery]     = useState('');
@@ -61,6 +61,13 @@ function DispatchTrackingPage({ onBack }) {
   const [stats, setStats]                 = useState({ total: 0, inTransit: 0, outForDelivery: 0, delivered: 0 });
   const [loading, setLoading]             = useState(true);
   const [refreshing, setRefreshing]       = useState(false);
+  // Track which order was opened from "My Orders"
+  const [highlightedOrderId, setHighlightedOrderId] = useState(initialOrderId || null);
+
+  // When initialOrderId changes (navigation from My Orders), update highlight
+  useEffect(() => {
+    if (initialOrderId) setHighlightedOrderId(initialOrderId);
+  }, [initialOrderId]);
 
   const filters = ['All Orders', 'In Transit', 'Delivered', 'Pending', 'Preparing'];
 
@@ -139,6 +146,19 @@ function DispatchTrackingPage({ onBack }) {
         </View>
       )}
 
+      {/* "From My Orders" context banner */}
+      {highlightedOrderId && (
+        <View style={styles.contextBanner}>
+          <Icon name="map-marker-path" size={16} color={colors.red} />
+          <Text style={styles.contextBannerText}>
+            Tracking order <Text style={styles.contextBannerOrder}>{highlightedOrderId}</Text> from My Orders
+          </Text>
+          <Pressable onPress={() => setHighlightedOrderId(null)}>
+            <Icon name="close" size={16} color={colors.muted} />
+          </Pressable>
+        </View>
+      )}
+
       {/* Stats Cards */}
       <View style={styles.statsContainer}>
         <View style={styles.statsRow}>
@@ -194,9 +214,19 @@ function DispatchTrackingPage({ onBack }) {
               </Text>
             </View>
           ) : (
-            shipments.map((shipment) => (
-              <ShipmentCard key={shipment.mongodbId || shipment.orderId} shipment={shipment} />
-            ))
+            shipments.map((shipment) => {
+              const sid = shipment.mongodbId || shipment.orderId;
+              const isHighlighted = highlightedOrderId &&
+                (sid === highlightedOrderId || shipment.orderId === highlightedOrderId);
+              return (
+                <ShipmentCard
+                  key={sid}
+                  shipment={shipment}
+                  autoExpand={isHighlighted}
+                  highlighted={isHighlighted}
+                />
+              );
+            })
           )}
           <View style={{ height: 40 }} />
         </ScrollView>
@@ -206,10 +236,18 @@ function DispatchTrackingPage({ onBack }) {
 }
 
 // ── ShipmentCard ──────────────────────────────────────────────────────────────
-function ShipmentCard({ shipment }) {
-  const [expanded, setExpanded] = useState(false);
+function ShipmentCard({ shipment, autoExpand, highlighted }) {
+  const [expanded, setExpanded] = useState(autoExpand || false);
   const [trackDetail, setTrackDetail]   = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+
+  // Auto-expand and fetch details when navigated from My Orders
+  useEffect(() => {
+    if (autoExpand && !trackDetail) {
+      fetchTrackDetail();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoExpand]);
 
   const st = getStatusStyle(shipment.dispatchStatus || shipment.status);
 
@@ -245,7 +283,10 @@ function ShipmentCard({ shipment }) {
   const stages = trackDetail?.stages || null;
 
   return (
-    <View style={styles.shipmentCard}>
+    <View style={[
+      styles.shipmentCard,
+      highlighted && styles.shipmentCardHighlighted,
+    ]}>
       {/* Header */}
       <View style={styles.darkHeader}>
         <View style={styles.headerTop}>
@@ -526,6 +567,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF', borderRadius: 20, marginBottom: 16,
     overflow: 'hidden', ...shadow,
   },
+  shipmentCardHighlighted: {
+    borderWidth: 2,
+    borderColor: colors.red,
+  },
+  contextBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FFF5F5', paddingHorizontal: 16, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: '#FFE3E3',
+  },
+  contextBannerText: { flex: 1, fontSize: 13, color: colors.text, fontWeight: '600' },
+  contextBannerOrder: { color: colors.red, fontWeight: '900' },
   darkHeader: {
     backgroundColor: '#FFFFFF', padding: 20,
     borderBottomWidth: 1, borderBottomColor: '#F0F0F0',

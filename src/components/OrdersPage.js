@@ -1,593 +1,410 @@
-/**
- * OrdersPage.js  –  SCREEN 6: My Orders
- * GET /api/dealer/orders
- * 16 exact status labels from Admin panel.
- * Tapping an order → TrackOrderPage.
- * Pull-to-refresh syncs live from backend.
- */
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  RefreshControl,
-  TouchableOpacity,
-} from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { colors, shadow } from './theme';
-import orderService from './services/orderService';
-import TrackOrderPage from './TrackOrderPage';
+import { useState, useEffect, useCallback } from 'react';
+import * as XLSX from 'xlsx';
+import StatusBadge from '../../components/common/StatusBadge';
+import DataTable from '../../components/tables/DataTable';
+import Modal from '../../components/common/Modal';
+import { MdDeleteOutline, MdAdd, MdDownload, MdRefresh } from 'react-icons/md';
+import { toast } from '../../components/common/Toast';
+import { salesOrderApi } from '../../api/salesOrderApi';
+import { clientApi } from '../../api/clientApi';
 
-// ── 16 exact status labels from Admin panel ────────────────────────────────
-export const ALL_STATUSES = [
-  'All',
-  'Order Placed',
-  'Pending Approval',
-  'Approved',
-  'Rejected',
-  'Picking Started',
-  'Picking Completed',
-  'Sorting Started',
-  'Sorting Completed',
-  'Packing Started',
-  'Packing Completed',
-  'Invoice Generated',
-  'Ready for Dispatch',
-  'Dispatched',
-  'In Transit',
-  'Delivered',
-  'Cancelled',
-];
+const inp = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none bg-white text-gray-800 focus:border-red-500 focus:ring-2 focus:ring-red-100 placeholder:text-gray-400 font-[inherit]';
+const emptyForm = { customer: '', date: '', priority: 'Normal', status: 'Pending', items: '', value: '', remarks: '', file: '' };
 
-export const STATUS_STYLE = {
-  'Order Placed':        { color: '#1565C0', bg: '#E3F0FF' },
-  'Pending Approval':    { color: '#E65100', bg: '#FFF3E0' },
-  'Approved':            { color: '#2E7D32', bg: '#E8F5E9' },
-  'Rejected':            { color: '#B71C1C', bg: '#FFEBEE' },
-  'Picking Started':     { color: '#6A1B9A', bg: '#F3E5F5' },
-  'Picking Completed':   { color: '#6A1B9A', bg: '#EDE7F6' },
-  'Sorting Started':     { color: '#00695C', bg: '#E0F2F1' },
-  'Sorting Completed':   { color: '#00695C', bg: '#B2DFDB' },
-  'Packing Started':     { color: '#0277BD', bg: '#E1F5FE' },
-  'Packing Completed':   { color: '#0277BD', bg: '#B3E5FC' },
-  'Invoice Generated':   { color: '#1565C0', bg: '#E3F2FD' },
-  'Ready for Dispatch':  { color: '#558B2F', bg: '#F1F8E9' },
-  'Dispatched':          { color: '#827717', bg: '#F9FBE7' },
-  'In Transit':          { color: '#2196F3', bg: 'rgba(33,150,243,0.1)' },
-  'Delivered':           { color: '#2E7D32', bg: '#E8F5E9' },
-  'Cancelled':           { color: '#B71C1C', bg: '#FFEBEE' },
-};
-
-const fmtDate = (d) => {
-  if (!d) return 'N/A';
-  try {
-    return new Date(d).toLocaleDateString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric',
-    });
-  } catch { return String(d); }
-};
-
-function OrdersPage({ onBack }) {
-  const [activeFilter, setActiveFilter] = useState('All');
-  const [searchQuery, setSearchQuery]   = useState('');
-  const [orders, setOrders]             = useState([]);
-  const [loading, setLoading]           = useState(true);
-  const [refreshing, setRefreshing]     = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState(null);
-
-  const fetchOrders = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await orderService.getOrders({
-        status: activeFilter === 'All' ? undefined : activeFilter,
-        search: searchQuery || undefined,
-        page: 1,
-        limit: 50,
-      });
-      if (response && response.success) {
-        setOrders(response.data || []);
-      } else {
-        Alert.alert('Error', response?.message || 'Failed to fetch orders');
-      }
-    } catch (error) {
-      console.error('Fetch orders error:', error);
-      Alert.alert('Error', 'Failed to load orders. Please check your connection.');
-    } finally {
-      setLoading(false);
-    }
-  }, [activeFilter, searchQuery]);
-
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchOrders();
-    setRefreshing(false);
-  };
-
-  // ── Show TrackOrderPage ──────────────────────────────────────────────────
-  if (selectedOrder) {
-    return (
-      <TrackOrderPage
-        order={selectedOrder}
-        onBack={() => setSelectedOrder(null)}
-      />
-    );
-  }
-
+function Spinner() {
   return (
-    <View style={styles.page}>
-      {/* ── Navbar ── */}
-      <View style={styles.navbar}>
-        <View style={styles.navTopRow}>
-          <Pressable onPress={onBack} style={styles.navBackBtn}>
-            <Icon name="arrow-left" size={24} color="#FFFFFF" />
-          </Pressable>
-          <Text style={styles.navTitle}>My Orders</Text>
-          <View style={{ width: 40 }} />
-        </View>
-
-        {/* Search */}
-        <View style={styles.navSearchSection}>
-          <View style={styles.navSearchBar}>
-            <Icon name="magnify" size={20} color="rgba(255,255,255,0.7)" />
-            <TextInput
-              placeholder="Search by order ID..."
-              placeholderTextColor="rgba(255,255,255,0.5)"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              style={styles.navSearchInput}
-            />
-            {searchQuery.length > 0 && (
-              <Pressable onPress={() => setSearchQuery('')}>
-                <Icon name="close-circle" size={18} color="rgba(255,255,255,0.7)" />
-              </Pressable>
-            )}
-          </View>
-        </View>
-
-        {/* 16 status filter pills */}
-        <View style={styles.navFilterSection}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.navFilterRow}>
-            {ALL_STATUSES.map((filter) => (
-              <Pressable
-                key={filter}
-                onPress={() => setActiveFilter(filter)}
-                style={[
-                  styles.navFilterPill,
-                  activeFilter === filter && styles.navFilterPillActive,
-                ]}>
-                <Text
-                  style={[
-                    styles.navFilterText,
-                    activeFilter === filter && styles.navFilterTextActive,
-                  ]}>
-                  {filter}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-      </View>
-
-      {/* ── List ── */}
-      {loading ? (
-        <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color={colors.red} />
-          <Text style={styles.loaderText}>Loading orders…</Text>
-        </View>
-      ) : (
-        <ScrollView
-          style={styles.orderList}
-          contentContainerStyle={styles.orderListContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={[colors.red]}
-            />
-          }>
-          {orders.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Icon name="package-variant" size={64} color={colors.muted} />
-              <Text style={styles.emptyTitle}>No Orders Found</Text>
-              <Text style={styles.emptyText}>
-                {searchQuery
-                  ? 'Try a different search term'
-                  : activeFilter !== 'All'
-                  ? `No "${activeFilter}" orders`
-                  : 'Place an order to see it here'}
-              </Text>
-              {orders.length === 0 && !searchQuery && activeFilter === 'All' && (
-                <Pressable style={styles.shopBtn} onPress={() => onBack && onBack()}>
-                  <Text style={styles.shopBtnText}>Start Shopping</Text>
-                </Pressable>
-              )}
-            </View>
-          ) : (
-            orders.map((order) => {
-              const st = STATUS_STYLE[order.status] || { color: colors.muted, bg: '#F2F2F2' };
-              // Backend returns: id (orderId), mongodbId, status, priority, amount, totalItems,
-              // totalQty, value, subTotal, totalGst, source, lineItems, createdAt, statusHistory
-              const itemsPreview = Array.isArray(order.lineItems) && order.lineItems.length > 0
-                ? order.lineItems.slice(0, 2)
-                : [];
-
-              // Dealer name — backend returns 'customer' field (SalesOrder.customer = dealer name)
-              const dealerName = order.dealerName || order.dealer?.name || order.customer || null;
-
-              return (
-                <View key={order.mongodbId || order.id} style={styles.orderCard}>
-
-                  {/* ── Header: Order ID + Status badge ── */}
-                  <View style={styles.cardHeader}>
-                    <View style={styles.cardHeaderLeft}>
-                      <Text style={styles.cardOrderId}>{order.id || order.orderId || '—'}</Text>
-                      <Text style={styles.cardDate}>
-                        <Icon name="calendar-outline" size={10} color="#868E96" />
-                        {'  '}{fmtDate(order.createdAt || order.orderDate)}
-                      </Text>
-                    </View>
-                    <View style={[styles.statusBadge, { backgroundColor: st.bg }]}>
-                      <Text style={[styles.statusText, { color: st.color }]}>
-                        {order.status}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* ── Dealer row (if available) ── */}
-                  {dealerName ? (
-                    <View style={styles.dealerRow}>
-                      <Icon name="account-tie-outline" size={13} color="#6C757D" />
-                      <Text style={styles.dealerText} numberOfLines={1}>{dealerName}</Text>
-                    </View>
-                  ) : null}
-
-                  <View style={styles.cardDivider} />
-
-                  {/* ── Stats grid: Total Value | Items | Priority ── */}
-                  <View style={styles.cardStatsRow}>
-                    <View style={styles.statBox}>
-                      <Text style={styles.statBoxValue}>
-                        {order.amount
-                          ? order.amount
-                          : `₹${Number(order.value || order.totalAmount || 0).toLocaleString('en-IN')}`}
-                      </Text>
-                      <Text style={styles.statBoxLabel}>Total Value</Text>
-                    </View>
-                    <View style={styles.statSep} />
-                    <View style={styles.statBox}>
-                      <Text style={styles.statBoxValue}>
-                        {order.totalItems || (Array.isArray(order.lineItems) ? order.lineItems.length : 0)}
-                      </Text>
-                      <Text style={styles.statBoxLabel}>Products</Text>
-                    </View>
-                    <View style={styles.statSep} />
-                    <View style={styles.statBox}>
-                      <Text style={[
-                        styles.statBoxValue,
-                        (order.priority === 'Urgent' || order.priority === 'High') && { color: colors.red },
-                      ]}>
-                        {order.priority || 'Normal'}
-                      </Text>
-                      <Text style={styles.statBoxLabel}>Priority</Text>
-                    </View>
-                  </View>
-
-                  {/* ── Products preview ── */}
-                  {itemsPreview.length > 0 && (
-                    <View style={styles.itemsPreviewBox}>
-                      {itemsPreview.map((item, idx) => (
-                        <View key={idx} style={styles.itemPreviewRow}>
-                          <Icon name="package-variant-closed" size={12} color="#868E96" />
-                          <Text style={styles.itemPreviewName} numberOfLines={1}>
-                            {item.name || item.itemName || item.sku || 'Item'}
-                          </Text>
-                          <Text style={styles.itemPreviewQty}>×{item.quantity || 0}</Text>
-                          {(item.unitPrice || 0) > 0 && (
-                            <Text style={styles.itemPreviewPrice}>
-                              ₹{Number((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString('en-IN')}
-                            </Text>
-                          )}
-                        </View>
-                      ))}
-                      {Array.isArray(order.lineItems) && order.lineItems.length > 2 && (
-                        <Text style={styles.itemsMoreText}>
-                          +{order.lineItems.length - 2} more items
-                        </Text>
-                      )}
-                    </View>
-                  )}
-
-                  {/* ── GST chip (DealerApp source chip removed) ── */}
-                  {(order.totalGst > 0 || order.invoice) && (
-                    <View style={styles.cardMetaRow}>
-                      {order.totalGst > 0 && (
-                        <View style={styles.gstChip}>
-                          <Icon name="percent" size={11} color="#0277BD" />
-                          <Text style={styles.gstChipText}>
-                            GST ₹{Number(order.totalGst || 0).toLocaleString('en-IN')}
-                          </Text>
-                        </View>
-                      )}
-                      {order.invoice && (
-                        <View style={styles.invoiceChip}>
-                          <Icon name="file-document-outline" size={11} color="#1565C0" />
-                          <Text style={styles.invoiceChipText}>{order.invoice}</Text>
-                        </View>
-                      )}
-                    </View>
-                  )}
-
-                  {/* ── Track button ── */}
-                  <Pressable
-                    style={styles.cardAction}
-                    onPress={() => setSelectedOrder(order)}>
-                    <Icon name="map-marker-path" size={14} color={colors.red} />
-                    <Text style={styles.actionText}>TRACK ORDER</Text>
-                    <Icon name="chevron-right" size={16} color={colors.red} />
-                  </Pressable>
-                </View>
-              );
-            })
-          )}
-          <View style={{ height: 40 }} />
-        </ScrollView>
-      )}
-    </View>
+    <div style={{ display:'flex', justifyContent:'center', padding:40 }}>
+      <div style={{ width:32, height:32, border:'3px solid #f1f5f9', borderTop:'3px solid #c0392b', borderRadius:'50%', animation:'spin 0.7s linear infinite' }} />
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
   );
 }
 
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F0F2F5' },
+function FormBody({ form, handleFormChange, customers, showCustomerDropdown, setShowCustomerDropdown }) {
+  const filteredCustomers = form.customer.trim() 
+    ? customers.filter(c => {
+        const name = (c.name || c.companyName || c.clientName || '').toLowerCase();
+        return name.includes(form.customer.toLowerCase());
+      })
+    : customers;
 
-  // Navbar
-  navbar: {
-    backgroundColor: colors.red,
-    paddingTop: 45,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    ...shadow,
-    zIndex: 10,
-  },
-  navTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    marginBottom: 16,
-  },
-  navBackBtn: {
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  navTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-  },
-  navSearchSection: { paddingHorizontal: 20, marginBottom: 16 },
-  navSearchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    height: 44,
-  },
-  navSearchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: '#FFFFFF',
-    marginLeft: 10,
-    fontWeight: '500',
-  },
-  navFilterSection: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    marginTop: 4,
-  },
-  navFilterRow: { paddingHorizontal: 20, paddingVertical: 16, gap: 8 },
-  navFilterPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: '#F1F3F5',
-    borderWidth: 1,
-    borderColor: '#E9ECEF',
-  },
-  navFilterPillActive: { backgroundColor: colors.red, borderColor: colors.red },
-  navFilterText: { fontSize: 11, fontWeight: '700', color: '#495057' },
-  navFilterTextActive: { color: '#FFFFFF' },
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-1.5 relative">
+          <label className="text-xs font-semibold text-gray-600">Customer Name *</label>
+          <input 
+            type="text" 
+            autoComplete="off" 
+            className={inp} 
+            placeholder="Type customer name..." 
+            value={form.customer} 
+            onChange={e => handleFormChange('customer', e.target.value)}
+            onFocus={() => setShowCustomerDropdown(true)}
+            onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+          />
+          {showCustomerDropdown && filteredCustomers.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
+              {filteredCustomers.map(c => {
+                const custName = c.name || c.companyName || c.clientName;
+                return (
+                  <div
+                    key={c._id}
+                    onMouseDown={e => {
+                      e.preventDefault();
+                      handleFormChange('customer', custName);
+                      setShowCustomerDropdown(false);
+                    }}
+                    className="px-3 py-2 hover:bg-red-50 cursor-pointer text-sm border-b border-gray-100 last:border-0"
+                  >
+                    {custName}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-600">Priority</label>
+          <select className={inp} value={form.priority} onChange={e => handleFormChange('priority', e.target.value)}>
+            {['Low','Normal','High','Urgent'].map(p => <option key={p}>{p}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-600">Order Status</label>
+          <select className={inp} value={form.status} onChange={e => handleFormChange('status', e.target.value)}>
+            {['Pending','Processing','Shipped','Delivered','Cancelled'].map(s => <option key={s}>{s}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-600">Number of Items *</label>
+          <input 
+            type="number" 
+            autoComplete="off" 
+            className={inp} 
+            placeholder="e.g. 12" 
+            value={form.items} 
+            onChange={e => handleFormChange('items', e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-600">Order Date</label>
+          <input 
+            type="date" 
+            className={inp} 
+            value={form.date} 
+            onChange={e => handleFormChange('date', e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-600">Order Value (₹) *</label>
+          <input 
+            type="number" 
+            autoComplete="off" 
+            className={inp} 
+            placeholder="e.g. 284000" 
+            value={form.value} 
+            onChange={e => handleFormChange('value', e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-semibold text-gray-600">File Attachment (URL)</label>
+        <input 
+          type="text" 
+          autoComplete="off" 
+          className={inp} 
+          placeholder="Paste file/document URL..." 
+          value={form.file} 
+          onChange={e => handleFormChange('file', e.target.value)}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-semibold text-gray-600">Remarks</label>
+        <textarea 
+          autoComplete="off" 
+          className={inp} 
+          placeholder="Add notes..." 
+          value={form.remarks} 
+          onChange={e => handleFormChange('remarks', e.target.value)}
+          rows="3" 
+        />
+      </div>
+    </div>
+  );
+}
 
-  // List
-  orderList: { flex: 1 },
-  orderListContent: { padding: 16, paddingTop: 20 },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 40,
-  },
-  loaderText: { marginTop: 16, fontSize: 14, color: colors.muted },
+export default function OrdersPage() {
+  const [orders, setOrders] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [stats, setStats] = useState({ total:0, pending:0, processing:0, delivered:0 });
+  const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [editOrder, setEditOrder] = useState(null);
+  const [deleteOrder, setDeleteOrder] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [form, setForm] = useState(emptyForm);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
-  // ── Cards ──
-  orderCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E9ECEF',
-    ...shadow,
-  },
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = {};
+      if (statusFilter !== 'All') params.status = statusFilter;
+      if (search) params.search = search;
+      const [listRes, statsRes] = await Promise.all([
+        salesOrderApi.getAll(params),
+        salesOrderApi.getStats(),
+      ]);
+      setOrders(listRes.data || []);
+      setStats(statsRes.data || {});
+    } catch (e) { toast(e.message || 'Failed to load orders', 'error'); }
+    finally { setLoading(false); }
+  }, [statusFilter, search]);
 
-  // Header row
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  cardHeaderLeft: { flex: 1, marginRight: 10 },
-  cardOrderId: { fontSize: 15, fontWeight: '900', color: '#212529', letterSpacing: 0.3 },
-  cardDate:    { fontSize: 11, fontWeight: '600', color: '#868E96', marginTop: 3 },
+  const fetchCustomers = useCallback(async () => {
+    try {
+      const res = await clientApi.getAll();
+      setCustomers(res.data || []);
+    } catch (e) { console.error('Failed to load customers:', e); }
+  }, []);
 
-  // Status badge
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, flexShrink: 0 },
-  statusText:  { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
 
-  // Dealer row
-  dealerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginBottom: 10,
-  },
-  dealerText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#495057',
-    flex: 1,
-  },
+  const handleFormChange = useCallback((field, value) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+  }, []);
 
-  cardDivider: { height: 1, backgroundColor: '#F1F3F5', marginBottom: 12, marginTop: 2 },
+  const handleCreate = async () => {
+    if (!form.customer) { toast('Customer name required', 'error'); return; }
+    if (!form.items || parseInt(form.items) <= 0) { toast('Items must be greater than 0', 'error'); return; }
+    if (!form.value || parseFloat(form.value) <= 0) { toast('Value must be greater than 0', 'error'); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        customer: form.customer,
+        items: parseInt(form.items),
+        value: parseFloat(form.value),
+        priority: form.priority,
+        status: form.status,
+        orderDate: form.date || new Date().toISOString(),
+        remarks: form.remarks,
+        file: form.file,
+      };
+      await salesOrderApi.create(payload);
+      toast('Order created successfully');
+      setForm(emptyForm);
+      setShowModal(false);
+      fetchAll();
+    } catch (e) { toast(e.message || 'Failed to create order', 'error'); }
+    finally { setSaving(false); }
+  };
 
-  // Stats row — Total Value | Products | Priority
-  cardStatsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    backgroundColor: '#F8F9FA',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderWidth: 1,
-    borderColor: '#EEEEEE',
-  },
-  statBox: { flex: 1, alignItems: 'center' },
-  statSep: { width: 1, height: 30, backgroundColor: '#DEE2E6' },
-  statBoxValue: { fontSize: 13, fontWeight: '900', color: '#212529', textAlign: 'center' },
-  statBoxLabel: { fontSize: 9, fontWeight: '700', color: '#ADB5BD', letterSpacing: 0.8, marginTop: 3, textAlign: 'center' },
+  const handleEdit = async () => {
+    if (!editOrder) return;
+    if (!form.customer) { toast('Customer name required', 'error'); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        customer: form.customer,
+        items: form.items ? parseInt(form.items) : undefined,
+        value: form.value ? parseFloat(form.value) : undefined,
+        priority: form.priority,
+        status: form.status,
+        remarks: form.remarks,
+        file: form.file,
+      };
+      await salesOrderApi.update(editOrder._id, payload);
+      toast(`Order ${editOrder.orderId} updated successfully`);
+      setEditOrder(null);
+      setForm(emptyForm);
+      fetchAll();
+    } catch (e) { toast(e.message || 'Failed to update order', 'error'); }
+    finally { setSaving(false); }
+  };
 
-  // Products preview
-  itemsPreviewBox: {
-    backgroundColor: '#F8F9FA',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#E9ECEF',
-  },
-  itemPreviewRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 3,
-  },
-  itemPreviewName: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#495057',
-  },
-  itemPreviewQty: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#868E96',
-  },
-  itemPreviewPrice: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.red,
-    marginLeft: 2,
-  },
-  itemsMoreText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.red,
-    marginTop: 2,
-  },
+  const openEdit = (row) => {
+    setEditOrder(row);
+    const itemDisplay = Array.isArray(row.items) ? row.items.length : (row.itemCount || row.items || 0);
+    setForm({ 
+      customer: row.customer, 
+      date: '', 
+      priority: row.priority, 
+      status: row.status, 
+      items: String(itemDisplay), 
+      value: String(row.value), 
+      remarks: row.remarks || '', 
+      file: row.file || '' 
+    });
+  };
 
-  // GST / Invoice chips
-  cardMetaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 10,
-  },
-  gstChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#E1F5FE',
-    borderRadius: 8,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  gstChipText: { fontSize: 10, fontWeight: '700', color: '#0277BD' },
-  invoiceChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#E3F0FF',
-    borderRadius: 8,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  invoiceChipText: { fontSize: 10, fontWeight: '700', color: '#1565C0' },
+  const confirmDelete = async () => {
+    if (!deleteOrder) return;
+    try {
+      await salesOrderApi.delete(deleteOrder._id);
+      toast(`Order ${deleteOrder.orderId} deleted`);
+      setDeleteOrder(null);
+      fetchAll();
+    } catch (e) { toast(e.message || 'Failed to delete', 'error'); }
+  };
 
-  cardAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: '#FFF5F5',
-    borderWidth: 1,
-    borderColor: '#FFE3E3',
-    marginTop: 4,
-  },
-  actionText: { fontSize: 11, fontWeight: '800', color: colors.red, letterSpacing: 0.5 },
+  const handleExport = () => {
+    if (!orders.length) { toast('No orders to export', 'warning'); return; }
+    const rows = orders.map(o => ({
+      'Order ID': o.orderId,
+      'Customer': o.customer,
+      'Items': Array.isArray(o.items) ? o.items.length : (o.itemCount || o.items || 0),
+      'Value (₹)': o.value,
+      'Priority': o.priority,
+      'Status': o.status,
+      'Date': new Date(o.orderDate).toLocaleDateString('en-IN'),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{ wch:16 },{ wch:28 },{ wch:8 },{ wch:14 },{ wch:10 },{ wch:14 },{ wch:12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Orders');
+    const summaryRows = [
+      { Metric:'Total Orders', Value: stats.total },
+      { Metric:'Pending', Value: stats.pending },
+      { Metric:'Processing', Value: stats.processing },
+      { Metric:'Delivered', Value: stats.delivered },
+      { Metric:'Exported On', Value: new Date().toLocaleString('en-IN') },
+    ];
+    const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+    const wbOut = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+    const blob = new Blob([wbOut], { type:'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Orders_${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast(`Exported ${orders.length} orders`);
+  };
 
-  // Empty
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 80,
-  },
-  emptyTitle: { fontSize: 18, fontWeight: '900', color: colors.text, marginTop: 16 },
-  emptyText:  {
-    fontSize: 14,
-    color: colors.muted,
-    marginTop: 8,
-    textAlign: 'center',
-    paddingHorizontal: 40,
-  },
-  shopBtn: {
-    marginTop: 20,
-    backgroundColor: colors.red,
-    borderRadius: 10,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-  },
-  shopBtnText: { color: '#FFF', fontSize: 15, fontWeight: '800' },
-});
+  const kpis = [
+    { label:'Total Orders', value: stats.total || 0, color:'#3b82f6' },
+    { label:'Processing', value: stats.processing || 0, color:'#f59e0b' },
+    { label:'Delivered', value: stats.delivered || 0, color:'#10b981' },
+    { label:'Pending', value: stats.pending || 0, color:'#ef4444' },
+  ];
 
-export default OrdersPage;
+  return (
+    <div>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:20, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', flex:1 }}>
+          <input placeholder="Search orders..." value={search} onChange={e => setSearch(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none bg-white focus:border-red-500 focus:ring-2 focus:ring-red-100 font-[inherit]"
+            style={{ minWidth:220 }} />
+          {['All','Pending','Processing','Shipped','Delivered','Cancelled'].map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer font-[inherit] ${statusFilter===s ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-600 border-gray-200 hover:border-red-400'}`}>
+              {s}
+            </button>
+          ))}
+        </div>
+        <div style={{ display:'flex', gap:8 }}>
+          <button onClick={fetchAll} className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-600 bg-white rounded-xl text-sm font-semibold cursor-pointer font-[inherit] hover:bg-gray-50 transition-all">
+            <MdRefresh size={16} />
+          </button>
+          <button onClick={handleExport} className="inline-flex items-center gap-2 px-5 py-2.5 border-2 border-red-600 text-red-700 bg-white rounded-xl text-sm font-semibold cursor-pointer font-[inherit] hover:bg-red-50 transition-all shadow-sm">
+            <MdDownload size={16} />Export
+          </button>
+          <button onClick={() => { setForm(emptyForm); setShowModal(true); }}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-br from-red-500 to-red-700 text-white rounded-xl text-sm font-semibold shadow-md cursor-pointer font-[inherit] border-0 hover:shadow-lg hover:-translate-y-0.5 transition-all">
+            <MdAdd size={18} />New Order
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+        {kpis.map((k, i) => (
+          <div key={i} className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm hover:-translate-y-1 hover:shadow-lg transition-all">
+            <div className="text-2xl font-black tracking-tight" style={{ color:k.color }}>{k.value}</div>
+            <div className="text-xs text-gray-500 font-medium mt-1">{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+        {loading ? <Spinner /> : (
+          <>
+            <DataTable columns={[
+              { key:'orderId', label:'Order ID', render: v => <span className="font-semibold text-red-700">{v}</span> },
+              { key:'customer', label:'Customer', render: v => <span className="font-semibold">{v}</span> },
+              { key:'items', label:'Items', render: (v, row) => (Array.isArray(v) ? v.length : (row.itemCount || v || 0)) },
+              { key:'value', label:'Value (₹)', render: v => <span className="font-bold">₹{Number(v).toLocaleString('en-IN')}</span> },
+              { key:'priority', label:'Priority', render: v => <StatusBadge status={v} type={v==='Urgent'?'danger':v==='High'?'warning':v==='Low'?'gray':'info'} /> },
+              { key:'orderDate', label:'Date', render: v => new Date(v).toLocaleDateString('en-IN',{day:'2-digit',month:'short'}) },
+              { key:'status', label:'Status', render: v => <StatusBadge status={v} /> },
+              { key:'_id', label:'Actions', render: (_, row) => (
+                <div className="flex gap-1.5">
+                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-red-600 text-red-700 bg-transparent font-semibold hover:bg-red-700 hover:text-white transition-all cursor-pointer font-[inherit]" onClick={() => setSelectedOrder(row)}>View</button>
+                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-gray-100 text-gray-800 font-semibold cursor-pointer font-[inherit] border-0 hover:bg-gray-200 transition-all" onClick={() => openEdit(row)}>Edit</button>
+                  <button className="inline-flex items-center gap-1.5 px-2 py-1.5 text-xs rounded-lg bg-red-50 text-red-600 font-semibold cursor-pointer font-[inherit] border border-red-200 hover:bg-red-600 hover:text-white transition-all" onClick={() => setDeleteOrder(row)}><MdDeleteOutline size={15} /></button>
+                </div>
+              )},
+            ]} data={orders} />
+            {orders.length === 0 && <div className="text-center py-10 text-gray-400 text-sm">No orders found. Click "+ New Order" to create one.</div>}
+          </>
+        )}
+      </div>
+
+      <Modal open={!!deleteOrder} onClose={() => setDeleteOrder(null)} title="Delete Order">
+        <p className="text-sm text-gray-700 mb-4">Delete order <strong>{deleteOrder?.orderId}</strong> for <strong>{deleteOrder?.customer}</strong>? This cannot be undone.</p>
+        <div className="flex gap-2 justify-end">
+          <button className="inline-flex items-center gap-1.5 px-4 py-2 border border-red-600 text-red-700 bg-transparent rounded-xl text-sm font-semibold cursor-pointer font-[inherit]" onClick={() => setDeleteOrder(null)}>Cancel</button>
+          <button className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-semibold cursor-pointer font-[inherit] border-0" onClick={confirmDelete}>Delete</button>
+        </div>
+      </Modal>
+
+      <Modal open={showModal} onClose={() => { setShowModal(false); setShowCustomerDropdown(false); }} title="Create New Order">
+        <FormBody form={form} handleFormChange={handleFormChange} customers={customers} showCustomerDropdown={showCustomerDropdown} setShowCustomerDropdown={setShowCustomerDropdown} />
+        <div className="flex gap-2 justify-end mt-4">
+          <button className="inline-flex items-center gap-1.5 px-4 py-2 border border-red-600 text-red-700 bg-transparent rounded-xl text-sm font-semibold cursor-pointer font-[inherit]" onClick={() => { setShowModal(false); setShowCustomerDropdown(false); }}>Cancel</button>
+          <button className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-br from-red-500 to-red-700 text-white rounded-xl text-sm font-semibold shadow-md border-0 cursor-pointer font-[inherit]" onClick={handleCreate} disabled={saving}>{saving ? 'Creating...' : 'Create Order'}</button>
+        </div>
+      </Modal>
+
+      <Modal open={!!editOrder} onClose={() => { setEditOrder(null); setForm(emptyForm); setShowCustomerDropdown(false); }} title={`Edit Order — ${editOrder?.orderId}`}>
+        <FormBody form={form} handleFormChange={handleFormChange} customers={customers} showCustomerDropdown={showCustomerDropdown} setShowCustomerDropdown={setShowCustomerDropdown} />
+        <div className="flex gap-2 justify-end mt-4">
+          <button className="inline-flex items-center gap-1.5 px-4 py-2 border border-red-600 text-red-700 bg-transparent rounded-xl text-sm font-semibold cursor-pointer font-[inherit]" onClick={() => { setEditOrder(null); setForm(emptyForm); setShowCustomerDropdown(false); }}>Cancel</button>
+          <button className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-br from-red-500 to-red-700 text-white rounded-xl text-sm font-semibold shadow-md border-0 cursor-pointer font-[inherit]" onClick={handleEdit} disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</button>
+        </div>
+      </Modal>
+
+      <Modal open={!!selectedOrder} onClose={() => setSelectedOrder(null)} title={`Order — ${selectedOrder?.orderId || ''}`}>
+        {selectedOrder && [
+          ['Customer', selectedOrder.customer],
+          ['Order Date', new Date(selectedOrder.orderDate).toLocaleDateString('en-IN')],
+          ['Items', Array.isArray(selectedOrder.items) ? selectedOrder.items.length : (selectedOrder.itemCount || selectedOrder.items || 0)],
+          ['Value', `₹${Number(selectedOrder.value).toLocaleString('en-IN')}`],
+          ['Priority', selectedOrder.priority],
+          ['Status', selectedOrder.status],
+          ['Remarks', selectedOrder.remarks || '—'],
+          ['File', selectedOrder.file ? <a href={selectedOrder.file} target="_blank" rel="noreferrer" className="text-blue-600 underline">{selectedOrder.file}</a> : '—'],
+        ].map(([k, v]) => (
+          <div key={k} className="flex justify-between py-2 border-b border-gray-200 text-sm last:border-0">
+            <span className="text-gray-500">{k}</span>
+            <span className="font-semibold">{v}</span>
+          </div>
+        ))}
+        <div className="flex justify-end mt-4">
+          <button className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-br from-red-500 to-red-700 text-white rounded-xl text-sm font-semibold shadow-md border-0 cursor-pointer font-[inherit]" onClick={() => setSelectedOrder(null)}>Close</button>
+        </div>
+      </Modal>
+    </div>
+  );
+}

@@ -13,7 +13,7 @@ import {colors, shadow} from './theme';
 
 const TABS = ['Profile Info', 'Bank Details', 'Documents'];
 
-function ProfilePage({onLogout}) {
+function ProfilePage({onLogout, onNavigate}) {
   const [activeTab, setActiveTab] = useState('Profile Info');
   const [editing, setEditing] = useState(false);
 
@@ -51,6 +51,19 @@ function ProfilePage({onLogout}) {
               <Icon name="camera" size={14} color="#FFFFFF" />
             </Pressable>
           </View>
+
+          {/* Notification Button - Top Right */}
+          {onNavigate && (
+            <Pressable
+              onPress={() => onNavigate('notifications')}
+              style={styles.notificationBtn}>
+              <Icon name="bell-ring-outline" size={22} color="#FFFFFF" />
+              <View style={styles.notifBadge}>
+                <Text style={styles.notifBadgeText}>3</Text>
+              </View>
+            </Pressable>
+          )}
+
           <Text style={styles.profileName}>{profile.name}</Text>
           <View style={styles.idRow}>
             <Icon name="card-account-details" size={13} color="rgba(255,255,255,0.8)" />
@@ -509,6 +522,42 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: colors.red,
   },
+  
+  // ── Notification Button (Top-right of profile card) ──
+  notificationBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  notifBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    backgroundColor: '#FF3B30',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.red,
+    paddingHorizontal: 4,
+  },
+  notifBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+    lineHeight: 13,
+  },
+
   profileName: {color: '#FFFFFF', fontSize: 21, fontWeight: '900', marginBottom: 4},
   idRow: {flexDirection: 'row', alignItems: 'center', marginBottom: 8},
   profileMeta: {color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '600'},

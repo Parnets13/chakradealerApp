@@ -78,6 +78,10 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
   const [activePage, setActivePage] = useState(externalActivePage || 'home');
   // Cart data passed from CategoryPage → CartScreen → CheckoutScreen
   const [cartData, setCartData] = useState(null);
+  // Order ID to highlight when navigating from My Orders → Dispatch & Tracking
+  const [dispatchOrderId, setDispatchOrderId] = useState(null);
+  // Order data to pre-fill PlaceOrderPage when re-ordering from My Orders
+  const [reorderData, setReorderData] = useState(null);
 
   React.useEffect(() => {
     if (externalActivePage) {
@@ -94,6 +98,14 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
     if (NAV_ITEMS.map(n => n.id).includes(page)) setActiveTab(page);
   };
 
+  // Called from OrdersPage "Track Order" button — go to dispatch page with that order highlighted
+  const handleTrackOrder = (orderId) => {
+    setDispatchOrderId(orderId || null);
+    setActivePage('dispatch');
+    setActiveTab('dispatch');
+    if (onPageChange) onPageChange('dispatch');
+  };
+
   const isSubPage = activePage !== 'home';
   const handleBackToHome = () => handleNavigate('home');
 
@@ -102,11 +114,11 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
       <SafeAreaView style={styles.screen} edges={['top']}>
         <StatusBar barStyle="light-content" backgroundColor={C.primary} />
         <View style={styles.subPageContainer}>
-          {activePage === 'orders'        && <OrdersPage onBack={handleBackToHome} />}
+          {activePage === 'orders'        && <OrdersPage onBack={handleBackToHome} onNavigateToDispatch={handleTrackOrder} />}
           {activePage === 'inventory'     && <InventoryPage onBack={handleBackToHome} />}
           {activePage === 'stock'         && <InventoryPage onBack={handleBackToHome} />}
-          {activePage === 'dispatch'      && <DispatchTrackingPage onBack={handleBackToHome} />}
-          {activePage === 'profile'       && <ProfilePage onLogout={onLogout} onBack={handleBackToHome} />}
+          {activePage === 'dispatch'      && <DispatchTrackingPage onBack={() => { setDispatchOrderId(null); handleBackToHome(); }} initialOrderId={dispatchOrderId} />}
+          {activePage === 'profile'       && <ProfilePage onLogout={onLogout} onBack={handleBackToHome} onNavigate={handleNavigate} />}
           {activePage === 'ledger'        && <DealerLedgerPage onBack={handleBackToHome} />}
           {activePage === 'returns'       && <ReturnsPage onBack={handleBackToHome} />}
           {activePage === 'reports'       && <ReportsDashboardSection onBack={handleBackToHome} />}
@@ -116,7 +128,7 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
           {activePage === 'cart'          && <CartScreen onBack={() => handleNavigate('category')} onCheckout={(cart, grand, sub, gst) => { setCartData({ cart, grand, sub, gst }); handleNavigate('checkout'); }} />}
           {activePage === 'checkout'      && cartData && <CheckoutScreen cart={cartData.cart} grandTotal={cartData.grand} subTotal={cartData.sub} totalGst={cartData.gst} onBack={(target) => handleNavigate(target || 'cart')} onOrderSuccess={() => handleNavigate('orders')} onOrderFail={() => {}} />}
           {activePage === 'invoices'      && <InvoicesPage onBack={handleBackToHome} />}
-          {activePage === 'placeorder'    && <PlaceOrderPage onBack={handleBackToHome} />}
+          {activePage === 'placeorder'    && <PlaceOrderPage onBack={handleBackToHome} onOrderPlaced={() => handleNavigate('orders')} />}
           {activePage === 'receipts'      && <DealerReceiptsPage onBack={handleBackToHome} />}
         </View>
         <BottomNavigation activeTab={activeTab} onChange={tab => {
