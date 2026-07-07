@@ -1,4 +1,4 @@
-import React, {useEffect, useRef, useState} from 'react';
+﻿import React, {useEffect, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -145,18 +145,28 @@ function BannerWave({height = 36}) {
   );
 }
 
+// Pure helper — normalize OTP value to a clean string, safe for any input type
+const normalizeOTP = (val) => String(val == null ? '' : val).trim();
+
 /* ─── Main controller ─── */
 function AuthScreens({onAuthenticated}) {
-  const [screen, setScreen] = useState(AUTH_SCREEN.LOGIN);
+  // Single state object — screen + OTP update atomically so OtpScreen
+  // always mounts with the correct OTP already in the prop.
+  const [authState, setAuthState] = useState({
+    screen: AUTH_SCREEN.LOGIN,
+    sessionOTP: '',
+    rawResponse: null,
+  });
   const [mobile, setMobile] = useState('');
-  const [currentOTP, setCurrentOTP] = useState('');
 
-  if (screen === AUTH_SCREEN.OTP) {
+  if (authState.screen === AUTH_SCREEN.OTP) {
     return (
       <OtpScreen
         mobile={mobile}
-        receivedOTP={currentOTP}
-        onBack={() => {setScreen(AUTH_SCREEN.LOGIN); setCurrentOTP('');}}
+        initialOTP={authState.sessionOTP}
+        rawResponse={authState.rawResponse}
+        onNewOTP={(otp, raw) => setAuthState(prev => ({...prev, sessionOTP: normalizeOTP(otp), rawResponse: raw ?? null}))}
+        onBack={() => setAuthState({screen: AUTH_SCREEN.LOGIN, sessionOTP: '', rawResponse: null})}
         onVerify={onAuthenticated}
       />
     );
@@ -165,7 +175,13 @@ function AuthScreens({onAuthenticated}) {
     <LoginScreen
       mobile={mobile}
       setMobile={setMobile}
-      onOtp={otp => {setCurrentOTP(otp); setScreen(AUTH_SCREEN.OTP);}}
+      onOtpSent={(receivedOtp, raw) => {
+        setAuthState({
+          screen: AUTH_SCREEN.OTP,
+          sessionOTP: normalizeOTP(receivedOtp),
+          rawResponse: raw ?? null,
+        });
+      }}
     />
   );
 }
@@ -173,7 +189,7 @@ function AuthScreens({onAuthenticated}) {
 /* ═══════════════════════════════════════════════
    LOGIN SCREEN
 ═══════════════════════════════════════════════ */
-function LoginScreen({mobile, setMobile, onOtp}) {
+function LoginScreen({mobile, setMobile, onOtpSent}) {
   const [loading, setLoading] = useState(false);
   const canSubmit = mobile.length === 10;
 
@@ -211,7 +227,8 @@ function LoginScreen({mobile, setMobile, onOtp}) {
     try {
       const response = await authService.sendOTP(mobile);
       if (response.success) {
-        onOtp(response.otp || '');
+        const otp = String(response.otp ?? '').trim();
+        onOtpSent(otp, response);
       } else {
         Alert.alert('Error', response.message || 'Failed to send OTP');
       }
@@ -397,11 +414,43 @@ function LockIllustration() {
 /* ═══════════════════════════════════════════════
    OTP SCREEN
 ═══════════════════════════════════════════════ */
-function OtpScreen({mobile, receivedOTP = '', onVerify, onBack}) {
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+function OtpScreen({mobile, initialOTP = '', rawResponse = null, onNewOTP, onVerify, onBack}) {
+  const clean = String(initialOTP ?? '').trim();
+
+  const [otp, setOtp] = useState(
+    clean.length === 6 ? clean.split('') : ['', '', '', '', '', '']
+  );
   const [timer, setTimer] = useState(28);
   const [loading, setLoading] = useState(false);
   const refs = useRef([]);
+  const isMounted = useRef(true);
+
+  // Sync when parent pushes a new OTP (resend case)
+  useEffect(() => {
+    const v = String(initialOTP ?? '').trim();
+    if (v.length === 6 && v !== displayOTP) {
+      setDisplayOTP(v);
+      setOtp(v.split(''));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOTP]);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
+
+  // Called by parent when resend gives a new OTP
+  const applyNewOTP = (newOtp, raw) => {
+    const v = String(newOtp ?? '').trim();
+    setDisplayOTP(v);
+    if (raw) setRawRes(raw);
+    if (v.length === 6) {
+      setOtp(v.split(''));
+    } else {
+      setOtp(['', '', '', '', '', '']);
+    }
+  };
 
   // Entrance animations
   const iconScale  = useRef(new Animated.Value(0.7)).current;
@@ -480,18 +529,24 @@ function OtpScreen({mobile, receivedOTP = '', onVerify, onBack}) {
   const handleResend = async () => {
     if (timer > 0) return;
     setLoading(true);
+    setDisplayOTP('');
+    setOtp(['', '', '', '', '', '']);
     try {
       const response = await authService.sendOTP(mobile);
+      if (!isMounted.current) return;
       if (response.success) {
-        Alert.alert('Success', 'OTP resent successfully');
+        const newOtp = String(response.otp ?? '').trim();
+        applyNewOTP(newOtp, response);
         setTimer(28);
-        setOtp(['', '', '', '', '', '']);
-        refs.current[0]?.focus();
+        if (onNewOTP) onNewOTP(newOtp, response);
+        Alert.alert('Success', 'New OTP sent successfully');
+      } else {
+        Alert.alert('Error', response.message || 'Failed to resend OTP');
       }
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to resend OTP');
     } finally {
-      setLoading(false);
+      if (isMounted.current) setLoading(false);
     }
   };
 
@@ -503,30 +558,19 @@ function OtpScreen({mobile, receivedOTP = '', onVerify, onBack}) {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{flexGrow: 1}}>
 
-        {/* ── Banner (taller on OTP for lock illustration space) ── */}
+        {/* ── Banner (OTP screen — rounded lock icon only, no bubbles) ── */}
         <View style={[s.banner, s.bannerOtp]}>
-          <PinkDots />
-          {/* Back button sits on top of banner */}
+          {/* Back button */}
           <Pressable onPress={onBack} style={s.backBtn} hitSlop={12}>
             <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
               <Path d="M19 12H5M12 5l-7 7 7 7" stroke="#1A1A1A" strokeWidth={2.2}
                 strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
           </Pressable>
-          {/* Lock illustration centred in banner */}
+          {/* Lock icon centred — nothing else */}
           <View style={s.lockBannerCenter}>
             <Animated.View style={{opacity: iconO, transform: [{scale: iconScale}]}}>
               <LockIllustration />
-            </Animated.View>
-            {/* OTP display card — shows actual digits when received, dots when not */}
-            <Animated.View style={[s.otpPreviewCard, {opacity: previewO}]}>
-              {[0,1,2,3,4,5].map(i => (
-                <View key={i} style={[s.otpPreviewBox, receivedOTP[i] && s.otpPreviewBoxFilled]}>
-                  <Text style={[s.otpPreviewDigit, receivedOTP[i] && s.otpPreviewDigitFilled]}>
-                    {receivedOTP[i] ?? '·'}
-                  </Text>
-                </View>
-              ))}
             </Animated.View>
           </View>
           <BannerWave height={40} />
@@ -541,8 +585,54 @@ function OtpScreen({mobile, receivedOTP = '', onVerify, onBack}) {
           </Text>
         </Animated.View>
 
+        {/* ── OTP reveal card — shows real OTP immediately on mount ── */}
+        <Animated.View style={[s.otpRevealCard, {opacity: previewO}]}>
+          {/* Header */}
+          <View style={s.otpRevealHeader}>
+            <View style={s.otpRevealDot}/>
+            <Text style={s.otpRevealLabel}> OTP FROM SERVER </Text>
+            <View style={s.otpRevealDot}/>
+          </View>
+
+          {/* Raw server response line */}
+          <View style={s.otpServerRow}>
+            <Text style={s.otpServerKey}>response.otp  →  </Text>
+            <Text style={s.otpServerValue}>
+              {rawRes?.otp ? String(rawRes.otp) : (displayOTP.length === 6 ? displayOTP : 'waiting…')}
+            </Text>
+          </View>
+
+          {/* 6 digit boxes — each digit in its own fixed box */}
+          <View style={s.otpRevealDigitsRow}>
+            {Array.from({length: 6}).map((_, i) => {
+              const digit = displayOTP.length === 6 ? displayOTP[i] : null;
+              return (
+                <View key={i} style={[s.otpRevealDigitBox, !digit && s.otpRevealDigitBoxPending]}>
+                  <Text style={[s.otpRevealDigit, !digit && s.otpRevealDigitPending]}>
+                    {digit || '–'}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Autofill button — only shown when OTP is available */}
+          {displayOTP.length === 6 && (
+            <Pressable
+              onPress={() => setOtp(displayOTP.split(''))}
+              style={s.autoFillBtn}>
+              <Svg width={15} height={15} viewBox="0 0 24 24" fill="none" style={{marginRight: 6}}>
+                <Path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"
+                  stroke="#FFF" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+              </Svg>
+              <Text style={s.autoFillBtnText}>Autofill OTP</Text>
+            </Pressable>
+          )}
+        </Animated.View>
+
         {/* ── OTP card ── */}
         <Animated.View style={[s.card, {opacity: cardO, transform: [{translateY: cardY}]}]}>
+
           {/* 6-box OTP input */}
           <View style={s.otpRow}>
             {otp.map((digit, index) => (
@@ -945,23 +1035,158 @@ const s = StyleSheet.create({
     textAlign: 'center',
   },
 
-  /* ── OTP boxes ── */
+  /* ── OTP reveal card — standalone block below heading ── */
+  otpRevealCard: {
+    marginHorizontal: 20,
+    marginBottom: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: RED,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 18,
+    alignItems: 'center',
+    shadowColor: RED,
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: {width: 0, height: 4},
+    elevation: 6,
+  },
+  otpRevealHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
+  /* ── Server response line ── */
+  otpServerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1A1A1A',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginBottom: 14,
+    alignSelf: 'stretch',
+  },
+  otpServerKey: {
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    color: '#9E9E9E',
+    fontWeight: '600',
+  },
+  otpServerValue: {
+    fontSize: 15,
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    color: '#00E676',
+    fontWeight: '800',
+    letterSpacing: 3,
+  },
+  otpRevealDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: RED,
+    opacity: 0.5,
+  },
+  otpRevealLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: RED,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+  },
+  otpRevealDigitsRow: {
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  otpRevealDigitBox: {
+    width: Math.floor((W - 40 - 32 - 5 * 6) / 6),
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: RED,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 3,
+    shadowColor: RED,
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: {width: 0, height: 2},
+  },
+  otpRevealDigit: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    includeFontPadding: false,
+    lineHeight: 30,
+  },
+  autoFillBtn: {
+    backgroundColor: RED,
+    borderRadius: 24,
+    paddingHorizontal: 32,
+    paddingVertical: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+    elevation: 3,
+    shadowColor: RED,
+    shadowOpacity: 0.28,
+    shadowRadius: 6,
+    shadowOffset: {width: 0, height: 3},
+  },
+  autoFillBtnDisabled: {
+    opacity: 0.38,
+  },
+  autoFillBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  otpRevealDigitBoxPending: {
+    backgroundColor: '#FFF0F0',
+    borderWidth: 2,
+    borderColor: RED,
+    borderStyle: 'dashed',
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  otpRevealDigitPending: {
+    color: 'rgba(197,31,43,0.35)',
+    fontSize: 20,
+  },
+  otpRevealNote: {
+    fontSize: 12,
+    color: '#9E9E9E',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+
+  /* ── OTP input boxes ── */
   otpRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 18,
   },
   otpBox: {
-    width: (W - 36 - 44 - 5 * 8) / 6,
-    height: 48,
+    width: Math.floor((W - 36 - 32 - 5 * 8) / 6),
+    height: 54,
     borderRadius: 12,
-    borderWidth: 1.8,
+    borderWidth: 2,
     borderColor: '#E0E0E0',
     backgroundColor: '#FAFAFA',
     textAlign: 'center',
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '800',
     color: '#1A1A1A',
+    padding: 0,
+    includeFontPadding: false,
   },
   otpBoxFilled: {
     borderColor: RED,
@@ -1002,57 +1227,14 @@ const s = StyleSheet.create({
     fontWeight: '800',
   },
 
-  /* ── OTP preview card (inside banner, below lock) ── */
-  otpPreviewCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: 'rgba(197,31,43,0.25)',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    marginTop: 16,
-    gap: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: {width: 0, height: 3},
-    elevation: 3,
-  },
-  otpPreviewBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: '#FFF5F5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(197,31,43,0.25)',
-  },
-  otpPreviewBoxFilled: {
-    backgroundColor: RED,
-    borderColor: RED,
-  },
-  otpPreviewDigit: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#1A1A1A',
-    lineHeight: 22,
-  },
-  otpPreviewDigitFilled: {
-    color: '#FFFFFF',
-  },
-
   /* ── OTP screen overrides ── */
   bannerOtp: {
-    height: H * 0.46,
+    height: H * 0.30,
   },
   headingWrapOtp: {
     alignItems: 'flex-start',
-    paddingTop: 14,
-    paddingBottom: 10,
+    paddingTop: 10,
+    paddingBottom: 6,
   },
   subheadingOtp: {
     textAlign: 'left',

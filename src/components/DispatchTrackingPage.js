@@ -15,7 +15,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import dispatchService from './services/dispatchService';
 
 const colors = {
-  red: '#C62828',
+  red: '#C51F2B',
   text: '#212121',
   muted: '#757575',
   orange: '#FF6F00',

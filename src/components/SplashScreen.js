@@ -3,7 +3,7 @@
  * Layout: Normal flex column — no absolute positioned logo overlay
  *   TOP:    sri-chakra-logo.png  (part of screen, not floating navbar)
  *   MIDDLE: login icon.png in soft circle + tagline
- *   BOTTOM: handshake (left) + login icon (right) on city bg + red wave
+ *   BOTTOM: handshake icon.png (left) on city bg + red wave
  */
 
 import React, {useEffect, useRef} from 'react';
@@ -168,7 +168,7 @@ function SplashScreen() {
           {/* pink circle bg */}
           <View style={styles.circleBg}/>
           <Image
-            source={require('./assets/login icon.png')}
+            source={require('./assets/login-icon.png')}
             style={styles.centerIcon}
             resizeMode="contain"
           />
@@ -200,17 +200,8 @@ function SplashScreen() {
           {/* handshake — left, fades in */}
           <Animated.View style={[styles.handshakeWrap, {opacity:fadeAll}]}>
             <Image
-              source={require('./assets/handshake icon.png')}
+              source={require('./assets/handshake-icon.png')}
               style={styles.handshakeImg}
-              resizeMode="contain"
-            />
-          </Animated.View>
-
-          {/* login icon — right, fades in */}
-          <Animated.View style={[styles.rightIconWrap, {opacity:fadeAll}]}>
-            <Image
-              source={require('./assets/login icon.png')}
-              style={styles.rightIcon}
               resizeMode="contain"
             />
           </Animated.View>

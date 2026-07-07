@@ -229,7 +229,7 @@ function buildLocation(item) {
 
 function getStatusStyle(adminStatus) {
   if (adminStatus === 'Dead')
-    return { displayStatus: 'Out of Stock', statusColor: '#E53E3E' };
+    return { displayStatus: 'Out of Stock', statusColor: '#660303ff' };
   if (adminStatus === 'Critical')
     return { displayStatus: 'Low Stock', statusColor: '#DD6B20' };
   return { displayStatus: 'In Stock', statusColor: '#38A169' };

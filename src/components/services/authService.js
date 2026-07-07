@@ -10,8 +10,24 @@ class AuthService {
       
       const response = await apiService.post(API_ENDPOINTS.AUTH.SEND_OTP, { mobile });
       
+      // Normalize OTP field — backend sends `otp` directly on the response object
+      const otp = String(
+        response.otp       ??   // primary field (dealer authRoutes.js)
+        response.otpCode   ??   // fallback alias
+        response.otp_code  ??   // snake_case fallback
+        response.data?.otp ??   // nested fallback
+        ''
+      ).trim();
+
       console.log('✅ OTP Response:', response);
-      return response;
+      console.log('🔢 Extracted OTP:', otp);
+
+      return {
+        success: response.success,
+        otp,
+        message: response.message,
+        dealer: response.dealer,
+      };
     } catch (error) {
       console.error('❌ Send OTP Error:', error);
       throw error;
@@ -24,9 +40,10 @@ class AuthService {
       console.log('🔐 Verifying OTP for:', mobile);
       console.log('🔗 API URL:', `${API_ENDPOINTS.AUTH.VERIFY_OTP}`);
       
+      // Backend expects { mobile, otp } — both as strings
       const response = await apiService.post(API_ENDPOINTS.AUTH.VERIFY_OTP, { 
-        mobile, 
-        otp 
+        mobile: String(mobile).trim(),
+        otp: String(otp).trim(),
       });
       
       console.log('✅ Verify Response:', response);

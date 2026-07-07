@@ -139,8 +139,8 @@ export const API_ENDPOINTS = {
   },
 
   // Finance (Dealer-specific — uses protectDealer JWT, no dealerId param needed)
-  // Full URLs (dev):  http://192.168.1.21:5001/api/dealer/finance/receipts
-  //                   http://192.168.1.21:5001/api/dealer/finance/ledger
+  // Full URLs (dev):  https://chakraindustries-backend.onrender.com/api/dealer/finance/receipts
+  //                   https://chakraindustries-backend.onrender.com/api/dealer/finance/ledger
   FINANCE: {
     RECEIPTS: '/finance/receipts',
     LEDGER:   '/finance/ledger',
