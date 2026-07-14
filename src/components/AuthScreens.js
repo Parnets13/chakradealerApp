@@ -254,7 +254,7 @@ function LoginScreen({mobile, setMobile, onOtpSent}) {
           <Animated.View style={[s.banner, {opacity: bannerO, transform: [{translateY: bannerY}]}]}>
             <PinkDots />
             <Image
-              source={require('./assets/login.png')}
+              source={require('./assets/sri-chakra-logo.png')}
               style={s.bannerImg}
               resizeMode="cover"
             />
