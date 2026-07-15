@@ -2,32 +2,33 @@ import apiService from './apiService';
 import { API_ENDPOINTS } from '../config/api';
 
 class AuthService {
-  // Send OTP to mobile
+  // Register new dealer
+  async registerDealer(data) {
+    try {
+      console.log('📋 Registering dealer:', data.mobile);
+      const response = await apiService.post(API_ENDPOINTS.AUTH.REGISTER, data);
+      console.log('✅ Register Response:', response);
+      return response;
+    } catch (error) {
+      console.error('❌ Register Error:', error);
+      throw error;
+    }
+  }
+
+  // Send OTP to mobile number
   async sendOTP(mobile) {
     try {
       console.log('📱 Sending OTP to:', mobile);
-      console.log('🔗 API URL:', `${API_ENDPOINTS.AUTH.SEND_OTP}`);
-      
       const response = await apiService.post(API_ENDPOINTS.AUTH.SEND_OTP, { mobile });
-      
-      // Normalize OTP field — backend sends `otp` directly on the response object
       const otp = String(
-        response.otp       ??   // primary field (dealer authRoutes.js)
-        response.otpCode   ??   // fallback alias
-        response.otp_code  ??   // snake_case fallback
-        response.data?.otp ??   // nested fallback
+        response.otp       ??
+        response.otpCode   ??
+        response.otp_code  ??
+        response.data?.otp ??
         ''
       ).trim();
-
       console.log('✅ OTP Response:', response);
-      console.log('🔢 Extracted OTP:', otp);
-
-      return {
-        success: response.success,
-        otp,
-        message: response.message,
-        dealer: response.dealer,
-      };
+      return { success: response.success, otp, message: response.message, dealer: response.dealer };
     } catch (error) {
       console.error('❌ Send OTP Error:', error);
       throw error;
@@ -38,21 +39,15 @@ class AuthService {
   async verifyOTP(mobile, otp) {
     try {
       console.log('🔐 Verifying OTP for:', mobile);
-      console.log('🔗 API URL:', `${API_ENDPOINTS.AUTH.VERIFY_OTP}`);
-      
-      // Backend expects { mobile, otp } — both as strings
-      const response = await apiService.post(API_ENDPOINTS.AUTH.VERIFY_OTP, { 
+      const response = await apiService.post(API_ENDPOINTS.AUTH.VERIFY_OTP, {
         mobile: String(mobile).trim(),
         otp: String(otp).trim(),
       });
-      
       console.log('✅ Verify Response:', response);
-      
       if (response.success && response.token) {
         await apiService.setToken(response.token);
         console.log('✅ Token saved successfully');
       }
-      
       return response;
     } catch (error) {
       console.error('❌ Verify OTP Error:', error);

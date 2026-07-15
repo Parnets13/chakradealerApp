@@ -38,15 +38,19 @@ class ApiService {
   // Make API request
   async request(endpoint, options = {}) {
     const token = await this.getToken();
-    
+
+    const isFormData = options.body instanceof FormData;
+
     const config = {
       method: options.method || 'GET',
       headers: {
-        'Content-Type': 'application/json',
+        // Don't set Content-Type for FormData — let the browser set multipart boundary
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
         ...(token && { Authorization: `Bearer ${token}` }),
         ...options.headers,
       },
-      ...(options.body && { body: JSON.stringify(options.body) }),
+      // FormData must NOT be JSON-stringified
+      ...(options.body && { body: isFormData ? options.body : JSON.stringify(options.body) }),
     };
 
     const fullURL = `${this.baseURL}${endpoint}`;
@@ -89,6 +93,10 @@ class ApiService {
       }
 
       if (!response.ok) {
+        // 409 = already exists — return data so caller can handle gracefully
+        if (response.status === 409) {
+          return data;
+        }
         const errorMessage = data.message || `API request failed with status ${response.status}`;
         console.error('❌ API Error:', errorMessage);
         throw new Error(errorMessage);

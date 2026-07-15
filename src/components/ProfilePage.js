@@ -1,859 +1,511 @@
-import React, {useState} from 'react';
+/**
+ * ProfilePage.js – Sri Chakra Industries Dealer App
+ * Curved wave header navbar + dynamic data from registration API
+ */
+
+import React, {useEffect, useRef, useState} from 'react';
 import {
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Easing,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import Svg, {Defs, LinearGradient, Path, Rect, Stop} from 'react-native-svg';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import {colors, shadow} from './theme';
+import authService from './services/authService';
+import dealerService from './services/dealerService';
 
-const TABS = ['Profile Info', 'Bank Details', 'Documents'];
+const {width: W} = Dimensions.get('window');
 
-function ProfilePage({onLogout, onNavigate}) {
-  const [activeTab, setActiveTab] = useState('Profile Info');
-  const [editing, setEditing] = useState(false);
+const RED      = '#E05565';
+const RED_SOFT = '#FFF5F6';
+const DARK     = '#1A2332';
+const GREY     = '#6B7280';
+const LINE     = '#F0F0F0';
+const BG       = '#F5F7FA';
+const WHITE    = '#FFFFFF';
 
-  const [profile, setProfile] = useState({
-    name: 'Rajan Mehta',
-    email: 'rajan.mehta@gmail.com',
-    phone: '+91 98765 43210',
-    dob: '14 August 1985',
-    gender: 'Male',
-    address: '42, MG Road, Indiranagar, Bengaluru, Karnataka — 560038',
-  });
+/* ─── Curved Wave Header ───────────────────────────────────── */
+const HEADER_H = 175;
 
-  const [notifications, setNotifications] = useState({
-    transactionSMS: true,
-    transactionEmail: false,
-    transactionPush: true,
-    securitySMS: true,
-    securityEmail: true,
-    securityPush: true,
-    offersSMS: false,
-    offersEmail: true,
-    offersPush: false,
-  });
+function WaveHeader({children}) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, {toValue: 1, duration: 650, easing: Easing.out(Easing.quad), useNativeDriver: true}).start();
+  }, [anim]);
+
+  const wavePath  = `M 0,${HEADER_H - 28} C ${W*0.28},${HEADER_H+22} ${W*0.72},${HEADER_H-48} ${W},${HEADER_H-16} L ${W},${HEADER_H} L 0,${HEADER_H} Z`;
+  const innerWave = `M 0,${HEADER_H-40} C ${W*0.30},${HEADER_H+8} ${W*0.68},${HEADER_H-58} ${W},${HEADER_H-28} L ${W},${HEADER_H-16} C ${W*0.72},${HEADER_H-48} ${W*0.28},${HEADER_H+22} 0,${HEADER_H-28} Z`;
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.profileCard}>
-          <View style={styles.avatarContainer}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarInitials}>RM</Text>
-            </View>
-            <Pressable style={styles.cameraBtn}>
-              <Icon name="camera" size={14} color="#FFFFFF" />
-            </Pressable>
-          </View>
-
-          {/* Notification Button - Top Right */}
-          {onNavigate && (
-            <Pressable
-              onPress={() => onNavigate('notifications')}
-              style={styles.notificationBtn}>
-              <Icon name="bell-ring-outline" size={22} color="#FFFFFF" />
-              <View style={styles.notifBadge}>
-                <Text style={styles.notifBadgeText}>3</Text>
-              </View>
-            </Pressable>
-          )}
-
-          <Text style={styles.profileName}>{profile.name}</Text>
-          <View style={styles.idRow}>
-            <Icon name="card-account-details" size={13} color="rgba(255,255,255,0.8)" />
-            <Text style={styles.profileMeta}>  SCI-DLR-2041</Text>
-          </View>
-          <View style={styles.verifiedBadge}>
-            <Icon name="shield-check" size={13} color="#4CAF50" />
-            <Text style={styles.verifiedText}>  KYC Verified</Text>
-          </View>
-        </View>
-
-        {/* Tabs */}
-        <View style={styles.tabsRow}>
-          {TABS.map(tab => (
-            <Pressable
-              key={tab}
-              onPress={() => setActiveTab(tab)}
-              style={[styles.tab, activeTab === tab && styles.tabActive]}>
-              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                {tab}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+    <View style={pS.header}>
+      <View style={StyleSheet.absoluteFill}>
+        <Svg width={W} height={HEADER_H} viewBox={`0 0 ${W} ${HEADER_H}`} style={StyleSheet.absoluteFill}>
+          <Defs>
+            <LinearGradient id="hbg" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0%"   stopColor="#C94455" />
+              <Stop offset="50%"  stopColor="#D44D5E" />
+              <Stop offset="100%" stopColor="#E05565" />
+            </LinearGradient>
+            <LinearGradient id="shine" x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity="0.13" />
+              <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0.00" />
+            </LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width={W} height={HEADER_H} fill="url(#hbg)" />
+          <Rect x="0" y="0" width={W} height={HEADER_H} fill="url(#shine)" />
+          <Path d={innerWave} fill="rgba(255,255,255,0.07)" />
+          <Path d={wavePath}  fill={BG} />
+        </Svg>
       </View>
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}>
-        {activeTab === 'Profile Info' && (
-          <ProfileInfoTab
-            profile={profile}
-            setProfile={setProfile}
-            editing={editing}
-            setEditing={setEditing}
-            notifications={notifications}
-            setNotifications={setNotifications}
-          />
-        )}
-        {activeTab === 'Bank Details' && <BankDetailsTab />}
-        {activeTab === 'Documents' && <DocumentsTab />}
-
-        <Pressable onPress={onLogout} style={styles.logoutBtn}>
-          <Icon name="logout-variant" size={20} color="#F44336" />
-          <Text style={styles.logoutText}>Sign Out</Text>
-        </Pressable>
-        <Text style={styles.versionText}>Version 1.0.0</Text>
-      </ScrollView>
+      <Animated.View style={[pS.headerContent, {opacity: anim}]}>
+        {children}
+      </Animated.View>
     </View>
   );
 }
 
-// ─────────────────────────────────────────────
-// Profile Info Tab
-// ─────────────────────────────────────────────
-function ProfileInfoTab({profile, setProfile, editing, setEditing, notifications, setNotifications}) {
+/* ─── Avatar circle ──────────────────────────────────────── */
+function Avatar({uri, initials, size = 86}) {
   return (
-    <>
-      {/* Personal Details */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleRow}>
-            <View style={styles.sectionIconBox}>
-              <Icon name="account-circle" size={18} color={colors.red} />
-            </View>
-            <Text style={styles.sectionTitle}>Personal Details</Text>
-          </View>
-          <Pressable onPress={() => setEditing(!editing)} style={[styles.editBtn, editing && styles.editBtnSave]}>
-            <Icon name={editing ? 'check' : 'pencil-outline'} size={15} color={editing ? '#4CAF50' : colors.red} />
-            <Text style={[styles.editBtnText, editing && {color: '#4CAF50'}]}>{editing ? 'Save' : 'Edit'}</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.detailsGrid}>
-          <DetailField icon="account-outline" label="Full Name" value={profile.name} editing={editing}
-            onChange={val => setProfile({...profile, name: val})} />
-          <DetailField icon="phone-outline" label="Mobile Number" value={profile.phone} />
-          <DetailField icon="email-outline" label="Email Address" value={profile.email} editing={editing}
-            onChange={val => setProfile({...profile, email: val})} />
-          <DetailField icon="calendar-outline" label="Date of Birth" value={profile.dob} editing={editing}
-            onChange={val => setProfile({...profile, dob: val})} />
-          <DetailField icon="gender-male-female" label="Gender" value={profile.gender} editing={editing}
-            onChange={val => setProfile({...profile, gender: val})} />
-          <DetailField icon="briefcase-outline" label="Occupation" value="Dealer" />
-        </View>
-
-        <View style={styles.addressBox}>
-          <View style={styles.addressLabelRow}>
-            <Icon name="map-marker-outline" size={15} color={colors.red} />
-            <Text style={styles.addressLabel}>  RESIDENTIAL ADDRESS</Text>
-          </View>
-          {editing ? (
-            <TextInput
-              value={profile.address}
-              onChangeText={val => setProfile({...profile, address: val})}
-              style={styles.addressInput}
-              multiline
-            />
-          ) : (
-            <Text style={styles.addressValue}>{profile.address}</Text>
-          )}
-        </View>
-      </View>
-
-      {/* Notification Preferences */}
-      <NotificationsSection notifications={notifications} setNotifications={setNotifications} />
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Notifications Section
-// ─────────────────────────────────────────────
-const NOTIF_GROUPS = [
-  {
-    key: 'transactions',
-    label: 'Transactions',
-    icon: 'swap-horizontal',
-    color: '#4A90E2',
-    bg: 'rgba(74,144,226,0.1)',
-    items: [
-      {key: 'transactionSMS',   icon: 'message-text-outline',  label: 'SMS Alerts',        desc: 'Instant SMS on every transaction'},
-      {key: 'transactionEmail', icon: 'email-outline',          label: 'Email Alerts',      desc: 'Transaction summary via email'},
-      {key: 'transactionPush',  icon: 'bell-outline',           label: 'Push Notifications',desc: 'In-app transaction alerts'},
-    ],
-  },
-  {
-    key: 'security',
-    label: 'Security',
-    icon: 'shield-lock-outline',
-    color: '#F26A21',
-    bg: 'rgba(242,106,33,0.1)',
-    items: [
-      {key: 'securitySMS',   icon: 'message-text-outline', label: 'SMS Alerts',        desc: 'Login & security updates via SMS'},
-      {key: 'securityEmail', icon: 'email-outline',         label: 'Email Alerts',      desc: 'Security notifications via email'},
-      {key: 'securityPush',  icon: 'bell-outline',          label: 'Push Notifications',desc: 'In-app security alerts'},
-    ],
-  },
-  {
-    key: 'offers',
-    label: 'Offers & Promotions',
-    icon: 'tag-outline',
-    color: '#9C27B0',
-    bg: 'rgba(156,39,176,0.1)',
-    items: [
-      {key: 'offersSMS',   icon: 'message-text-outline', label: 'SMS Alerts',        desc: 'Promotional offers via SMS'},
-      {key: 'offersEmail', icon: 'email-outline',         label: 'Email Alerts',      desc: 'Deals and offers via email'},
-      {key: 'offersPush',  icon: 'bell-outline',          label: 'Push Notifications',desc: 'In-app promotional alerts'},
-    ],
-  },
-];
-
-function NotificationsSection({notifications, setNotifications}) {
-  const [expanded, setExpanded] = useState({transactions: true, security: false, offers: false});
-
-  const toggle = key => setExpanded(prev => ({...prev, [key]: !prev[key]}));
-
-  return (
-    <View style={styles.section}>
-      <View style={styles.sectionTitleRow}>
-        <View style={[styles.sectionIconBox, {backgroundColor: 'rgba(197,31,43,0.1)'}]}>
-          <Icon name="bell-ring-outline" size={18} color={colors.red} />
-        </View>
-        <Text style={styles.sectionTitle}>Notification Preferences</Text>
-      </View>
-
-      {NOTIF_GROUPS.map(group => {
-        const activeCount = group.items.filter(i => notifications[i.key]).length;
-        return (
-          <View key={group.key} style={styles.notifGroupCard}>
-            <Pressable onPress={() => toggle(group.key)} style={styles.notifGroupHeader}>
-              <View style={[styles.notifGroupIcon, {backgroundColor: group.bg}]}>
-                <Icon name={group.icon} size={18} color={group.color} />
-              </View>
-              <View style={styles.notifGroupInfo}>
-                <Text style={styles.notifGroupLabel}>{group.label}</Text>
-                <Text style={styles.notifGroupSub}>{activeCount}/{group.items.length} enabled</Text>
-              </View>
-              <View style={styles.notifGroupRight}>
-                <View style={[styles.notifCountBadge, {backgroundColor: group.bg}]}>
-                  <Text style={[styles.notifCountText, {color: group.color}]}>{activeCount} on</Text>
-                </View>
-                <Icon name={expanded[group.key] ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} style={{marginLeft: 8}} />
-              </View>
-            </Pressable>
-
-            {expanded[group.key] && (
-              <View style={styles.notifItemsContainer}>
-                {group.items.map((item, idx) => (
-                  <View key={item.key} style={[styles.notifItem, idx === group.items.length - 1 && {borderBottomWidth: 0}]}>
-                    <View style={styles.notifItemIcon}>
-                      <Icon name={item.icon} size={16} color={group.color} />
-                    </View>
-                    <View style={styles.notifItemInfo}>
-                      <Text style={styles.notifLabel}>{item.label}</Text>
-                      <Text style={styles.notifDesc}>{item.desc}</Text>
-                    </View>
-                    <Switch
-                      value={notifications[item.key]}
-                      onValueChange={val => setNotifications({...notifications, [item.key]: val})}
-                      thumbColor="#FFFFFF"
-                      trackColor={{false: '#DEDEDE', true: group.color}}
-                      style={{transform: [{scaleX: 0.85}, {scaleY: 0.85}]}}
-                    />
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-        );
-      })}
+    <View style={[avS.wrap, {width:size, height:size, borderRadius:size/2}]}>
+      {uri
+        ? <Image source={{uri}} style={{width:size, height:size, borderRadius:size/2}} resizeMode="cover" />
+        : <Text style={[avS.txt, {fontSize:size*0.32}]}>{initials}</Text>
+      }
     </View>
   );
 }
-
-// ─────────────────────────────────────────────
-// Bank Details Tab
-// ─────────────────────────────────────────────
-function BankDetailsTab() {
-  const [banks, setBanks] = useState([
-    {id: 1, name: 'State Bank of India', branch: 'MG Road, Bengaluru', accountName: 'Rajan Enterprises', accountNo: '•••• •••• 4521', ifsc: 'SBIN0001234', type: 'Savings', isPrimary: true},
-    {id: 2, name: 'HDFC Bank', branch: 'Indiranagar, Bengaluru', accountName: 'Rajan Enterprises', accountNo: '•••• •••• 7890', ifsc: 'HDFC0001234', type: 'Current', isPrimary: false},
-  ]);
-
-  const setPrimary = id => setBanks(prev => prev.map(b => ({...b, isPrimary: b.id === id})));
-  const removeBank = id => setBanks(prev => prev.filter(b => b.id !== id));
-
-  return (
-    <>
-      {/* Security banner */}
-      <View style={styles.encBanner}>
-        <View style={styles.encIconBox}>
-          <Icon name="shield-lock" size={22} color="#4CAF50" />
-        </View>
-        <View style={{flex: 1}}>
-          <Text style={styles.encTitle}>Bank-Grade Security</Text>
-          <Text style={styles.encDesc}>All details encrypted with AES-256 bit encryption</Text>
-        </View>
-        <Icon name="check-circle" size={18} color="#4CAF50" />
-      </View>
-
-      {banks.map(bank => (
-        <View key={bank.id} style={[styles.bankCard, bank.isPrimary && styles.bankCardPrimary]}>
-          {/* Bank Header */}
-          <View style={styles.bankCardHeader}>
-            <View style={styles.bankLogoBox}>
-              <Icon name="bank" size={22} color={bank.isPrimary ? '#FFFFFF' : colors.orange} />
-            </View>
-            <View style={{flex: 1}}>
-              <Text style={styles.bankName}>{bank.name}</Text>
-              <Text style={styles.bankBranch}>{bank.branch}</Text>
-            </View>
-            {bank.isPrimary && (
-              <View style={styles.primaryBadge}>
-                <Icon name="star" size={11} color="#4CAF50" />
-                <Text style={styles.primaryText}> Primary</Text>
-              </View>
-            )}
-          </View>
-
-          {/* Account Info Grid */}
-          <View style={styles.bankInfoGrid}>
-            <View style={styles.bankInfoCell}>
-              <Text style={styles.bankInfoLabel}>Account Name</Text>
-              <Text style={styles.bankInfoValue}>{bank.accountName}</Text>
-            </View>
-            <View style={styles.bankInfoCell}>
-              <Text style={styles.bankInfoLabel}>Account Type</Text>
-              <Text style={styles.bankInfoValue}>{bank.type}</Text>
-            </View>
-            <View style={styles.bankInfoCell}>
-              <Text style={styles.bankInfoLabel}>Account No.</Text>
-              <Text style={[styles.bankInfoValue, styles.accountNoText]}>{bank.accountNo}</Text>
-            </View>
-            <View style={styles.bankInfoCell}>
-              <Text style={styles.bankInfoLabel}>IFSC Code</Text>
-              <Text style={styles.bankInfoValue}>{bank.ifsc}</Text>
-            </View>
-          </View>
-
-          {/* Actions */}
-          <View style={styles.bankActionsRow}>
-            {!bank.isPrimary && (
-              <Pressable onPress={() => setPrimary(bank.id)} style={styles.bankBtnOutline}>
-                <Icon name="star-outline" size={15} color={colors.orange} />
-                <Text style={[styles.bankBtnText, {color: colors.orange}]}>  Set Primary</Text>
-              </Pressable>
-            )}
-            <Pressable style={styles.bankBtnEdit}>
-              <Icon name="pencil-outline" size={15} color={colors.red} />
-              <Text style={styles.bankBtnText}>  Edit</Text>
-            </Pressable>
-            {!bank.isPrimary && (
-              <Pressable onPress={() => removeBank(bank.id)} style={styles.bankBtnDelete}>
-                <Icon name="trash-can-outline" size={15} color="#F44336" />
-                <Text style={[styles.bankBtnText, {color: '#F44336'}]}>  Remove</Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
-      ))}
-
-      <Pressable style={styles.addBankBtn}>
-        <View style={styles.addBankIconBox}>
-          <Icon name="plus" size={20} color="#FFFFFF" />
-        </View>
-        <Text style={styles.addBankText}>Add New Bank Account</Text>
-      </Pressable>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Documents Tab
-// ─────────────────────────────────────────────
-const DOC_LIST = [
-  {id: 1, name: 'Aadhaar Card', desc: 'Govt. issued ID proof', status: 'Verified',  icon: 'card-account-details',   color: '#4CAF50', bg: 'rgba(76,175,80,0.1)'},
-  {id: 2, name: 'PAN Card',     desc: 'Income tax identifier', status: 'Verified',  icon: 'credit-card-outline',      color: '#4CAF50', bg: 'rgba(76,175,80,0.1)'},
-  {id: 3, name: 'Passport',     desc: 'International travel doc', status: 'Pending', icon: 'passport',                color: '#FFA726', bg: 'rgba(255,167,38,0.1)'},
-  {id: 4, name: 'Driving Licence', desc: 'Valid driving license', status: 'Upload', icon: 'card-text-outline',        color: '#9E9E9E', bg: 'rgba(158,158,158,0.1)'},
-  {id: 5, name: 'GST Certificate', desc: 'Business registration', status: 'Upload', icon: 'file-certificate-outline', color: '#9E9E9E', bg: 'rgba(158,158,158,0.1)'},
-];
-
-function DocumentsTab() {
-  const [docs] = useState(DOC_LIST);
-
-  const verified  = docs.filter(d => d.status === 'Verified').length;
-  const pending   = docs.filter(d => d.status === 'Pending').length;
-  const upload    = docs.filter(d => d.status === 'Upload').length;
-  const progress  = (verified / docs.length) * 100;
-
-  return (
-    <>
-      {/* Progress Card */}
-      <View style={styles.progressCard}>
-        <View style={styles.progressTopRow}>
-          <View>
-            <Text style={styles.progressLabel}>Verification Progress</Text>
-            <Text style={styles.progressFraction}>{verified}/{docs.length} Documents</Text>
-          </View>
-          <View style={styles.progressCircle}>
-            <Text style={styles.progressPct}>{Math.round(progress)}%</Text>
-          </View>
-        </View>
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, {width: `${progress}%`}]} />
-        </View>
-        <View style={styles.progressStats}>
-          <ProgressStat label="Verified" count={verified}  color="#4CAF50" />
-          <ProgressStat label="Pending"  count={pending}   color="#FFA726" />
-          <ProgressStat label="Upload"   count={upload}    color="#9E9E9E" />
-        </View>
-      </View>
-
-      {/* Document Cards */}
-      {docs.map(doc => (
-        <View key={doc.id} style={styles.docCard}>
-          <View style={[styles.docIconBox, {backgroundColor: doc.bg}]}>
-            <Icon name={doc.icon} size={22} color={doc.color} />
-          </View>
-          <View style={styles.docInfo}>
-            <Text style={styles.docName}>{doc.name}</Text>
-            <Text style={styles.docDesc}>{doc.desc}</Text>
-          </View>
-          <View style={styles.docRight}>
-            <View style={[styles.docStatusBadge, {backgroundColor: doc.bg}]}>
-              <Icon
-                name={doc.status === 'Verified' ? 'check-circle' : doc.status === 'Pending' ? 'clock-outline' : 'upload'}
-                size={12}
-                color={doc.color}
-              />
-              <Text style={[styles.docStatusText, {color: doc.color}]}>  {doc.status}</Text>
-            </View>
-            {doc.status === 'Upload' && (
-              <Pressable style={styles.uploadBtn}>
-                <Icon name="upload" size={14} color="#FFFFFF" />
-                <Text style={styles.uploadBtnText}> Upload</Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
-      ))}
-
-      {/* Tips */}
-      <View style={styles.tipsCard}>
-        <View style={styles.tipsHeader}>
-          <Icon name="lightbulb-outline" size={18} color="#4A90E2" />
-          <Text style={styles.tipsTitle}>  Upload Tips</Text>
-        </View>
-        <View style={styles.tipRow}><Icon name="circle-small" size={14} color={colors.muted} /><Text style={styles.tipsText}>Clear, high-resolution images only</Text></View>
-        <View style={styles.tipRow}><Icon name="circle-small" size={14} color={colors.muted} /><Text style={styles.tipsText}>Maximum file size: 5 MB per document</Text></View>
-        <View style={styles.tipRow}><Icon name="circle-small" size={14} color={colors.muted} /><Text style={styles.tipsText}>Accepted formats: JPG, PNG, PDF</Text></View>
-      </View>
-    </>
-  );
-}
-
-function ProgressStat({label, count, color}) {
-  return (
-    <View style={styles.progressStatItem}>
-      <View style={[styles.progressStatDot, {backgroundColor: color}]} />
-      <Text style={styles.progressStatCount}>{count}</Text>
-      <Text style={styles.progressStatLabel}>{label}</Text>
-    </View>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Detail Field Component
-// ─────────────────────────────────────────────
-function DetailField({icon, label, value, editing, onChange}) {
-  return (
-    <View style={styles.detailField}>
-      <View style={styles.detailFieldHeader}>
-        <Icon name={icon} size={13} color={colors.red} />
-        <Text style={styles.detailLabel}>  {label}</Text>
-      </View>
-      {editing && onChange ? (
-        <TextInput
-          value={value}
-          onChangeText={onChange}
-          style={styles.detailInput}
-        />
-      ) : (
-        <Text style={styles.detailValue}>{value}</Text>
-      )}
-    </View>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Styles
-// ─────────────────────────────────────────────
-const styles = StyleSheet.create({
-  container: {flex: 1, backgroundColor: colors.bg},
-
-  // ── Header ──
-  header: {
-    backgroundColor: colors.red,
-    paddingTop: 24,
-    paddingBottom: 0,
-  },
-  profileCard: {alignItems: 'center', paddingBottom: 16, paddingHorizontal: 20},
-  avatarContainer: {position: 'relative', marginBottom: 10},
-  avatar: {
-    width: 82, height: 82, borderRadius: 41,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 3, borderColor: 'rgba(255,255,255,0.6)',
-  },
-  avatarInitials: {color: '#FFFFFF', fontSize: 30, fontWeight: '900'},
-  cameraBtn: {
-    position: 'absolute', bottom: 0, right: 0,
-    width: 26, height: 26, borderRadius: 13,
-    backgroundColor: '#333',
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: colors.red,
-  },
-  
-  // ── Notification Button (Top-right of profile card) ──
-  notificationBtn: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  notifBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    minWidth: 17,
-    height: 17,
-    borderRadius: 9,
-    backgroundColor: '#FF3B30',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: colors.red,
-    paddingHorizontal: 4,
-  },
-  notifBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '900',
-    lineHeight: 13,
-  },
-
-  profileName: {color: '#FFFFFF', fontSize: 21, fontWeight: '900', marginBottom: 4},
-  idRow: {flexDirection: 'row', alignItems: 'center', marginBottom: 8},
-  profileMeta: {color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '600'},
-  verifiedBadge: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20,
-  },
-  verifiedText: {color: '#FFFFFF', fontSize: 12, fontWeight: '700'},
-
-  // ── Tabs ──
-  tabsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 0,
-    paddingTop: 4,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent',
-  },
-  tabActive: {borderBottomColor: '#FFFFFF'},
-  tabText: {fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.6)', textAlign: 'center'},
-  tabTextActive: {color: '#FFFFFF', fontWeight: '900'},
-
-  // ── Content ──
-  content: {
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 32,
-  },
-
-  // ── Section ──
-  section: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    marginBottom: 14,
-    ...shadow,
-  },
-  sectionHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 16,
-  },
-  sectionTitleRow: {flexDirection: 'row', alignItems: 'center', marginBottom: 14},
-  sectionIconBox: {
-    width: 30, height: 30, borderRadius: 8,
-    backgroundColor: 'rgba(197,31,43,0.1)',
-    alignItems: 'center', justifyContent: 'center', marginRight: 8,
-  },
-  sectionTitle: {color: colors.text, fontSize: 15, fontWeight: '800'},
-  editBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(197,31,43,0.08)',
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12,
-  },
-  editBtnSave: {backgroundColor: 'rgba(76,175,80,0.1)'},
-  editBtnText: {color: colors.red, fontSize: 12, fontWeight: '700'},
-
-  // ── Details Grid ──
-  detailsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-    rowGap: 10,
-  },
-  detailField: {
-    width: '48.5%',
-    backgroundColor: colors.bg,
-    borderRadius: 12,
-    padding: 11,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  detailFieldHeader: {flexDirection: 'row', alignItems: 'center', marginBottom: 5},
-  detailLabel: {color: colors.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4},
-  detailValue: {color: colors.text, fontSize: 13, fontWeight: '700'},
-  detailInput: {
-    backgroundColor: '#FFFFFF', borderWidth: 1.5,
-    borderColor: colors.red, borderRadius: 8,
-    paddingVertical: 6, paddingHorizontal: 8,
-    color: colors.text, fontSize: 13,
-  },
-
-  // ── Address ──
-  addressBox: {
-    backgroundColor: colors.bg, borderRadius: 12,
-    padding: 12, borderWidth: 1, borderColor: colors.line,
-  },
-  addressLabelRow: {flexDirection: 'row', alignItems: 'center', marginBottom: 6},
-  addressLabel: {color: colors.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4},
-  addressValue: {color: colors.text, fontSize: 13, fontWeight: '600', lineHeight: 20},
-  addressInput: {
-    backgroundColor: '#FFFFFF', borderWidth: 1.5,
-    borderColor: colors.red, borderRadius: 8,
-    padding: 8, color: colors.text, fontSize: 13, minHeight: 60,
-  },
-
-  // ── Notifications ──
-  notifGroupCard: {
-    borderRadius: 14, borderWidth: 1, borderColor: colors.line,
-    marginBottom: 10, overflow: 'hidden',
-  },
-  notifGroupHeader: {
-    flexDirection: 'row', alignItems: 'center',
-    padding: 13, backgroundColor: '#FFFFFF',
-  },
-  notifGroupIcon: {
-    width: 36, height: 36, borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center', marginRight: 11,
-  },
-  notifGroupInfo: {flex: 1},
-  notifGroupLabel: {color: colors.text, fontSize: 14, fontWeight: '800'},
-  notifGroupSub: {color: colors.muted, fontSize: 11, marginTop: 1},
-  notifGroupRight: {flexDirection: 'row', alignItems: 'center'},
-  notifCountBadge: {paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8},
-  notifCountText: {fontSize: 11, fontWeight: '800'},
-  notifItemsContainer: {borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: '#FAFAFA'},
-  notifItem: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 13, paddingVertical: 11,
-    borderBottomWidth: 1, borderBottomColor: colors.line,
-  },
-  notifItemIcon: {
-    width: 30, height: 30, borderRadius: 8,
-    backgroundColor: '#FFFFFF', alignItems: 'center',
-    justifyContent: 'center', marginRight: 10,
-    borderWidth: 1, borderColor: colors.line,
-  },
-  notifItemInfo: {flex: 1},
-  notifLabel: {color: colors.text, fontSize: 13, fontWeight: '700'},
-  notifDesc: {color: colors.muted, fontSize: 11, marginTop: 1},
-
-  // ── Bank ──
-  encBanner: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(76,175,80,0.08)',
-    borderWidth: 1, borderColor: 'rgba(76,175,80,0.25)',
-    borderRadius: 14, padding: 13, marginBottom: 14,
-  },
-  encIconBox: {
-    width: 38, height: 38, borderRadius: 10,
-    backgroundColor: 'rgba(76,175,80,0.15)',
-    alignItems: 'center', justifyContent: 'center', marginRight: 12,
-  },
-  encTitle: {color: '#2E7D32', fontSize: 13, fontWeight: '800'},
-  encDesc: {color: '#4CAF50', fontSize: 11, marginTop: 2},
-  bankCard: {
-    backgroundColor: '#FFFFFF', borderRadius: 16,
-    padding: 0, marginBottom: 13, overflow: 'hidden',
-    borderWidth: 1, borderColor: colors.line, ...shadow,
-  },
-  bankCardPrimary: {borderColor: colors.orange, borderWidth: 1.5},
-  bankCardHeader: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#F9F9F9',
-    padding: 13, borderBottomWidth: 1, borderBottomColor: colors.line,
-  },
-  bankLogoBox: {
-    width: 42, height: 42, borderRadius: 11,
-    backgroundColor: 'rgba(242,106,33,0.12)',
-    alignItems: 'center', justifyContent: 'center', marginRight: 11,
-  },
-  bankName: {color: colors.text, fontSize: 14, fontWeight: '800'},
-  bankBranch: {color: colors.muted, fontSize: 11, marginTop: 2},
-  primaryBadge: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(76,175,80,0.12)',
-    paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8,
-  },
-  primaryText: {color: '#2E7D32', fontSize: 11, fontWeight: '800'},
-  bankInfoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    padding: 12,
-    rowGap: 8,
-  },
-  bankInfoCell: {
-    width: '48.5%',
-    backgroundColor: colors.bg,
-    borderRadius: 10,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  bankInfoLabel: {color: colors.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4},
-  bankInfoValue: {color: colors.text, fontSize: 13, fontWeight: '700'},
-  accountNoText: {letterSpacing: 1.5},
-  bankActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-  },
-  bankBtnOutline: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: colors.orange,
-    paddingVertical: 9, borderRadius: 10,
-  },
-  bankBtnEdit: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: colors.red,
-    paddingVertical: 9, borderRadius: 10,
-  },
-  bankBtnDelete: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: '#FFCDD2',
-    backgroundColor: 'rgba(244,67,54,0.05)',
-    paddingVertical: 9, borderRadius: 10,
-  },
-  bankBtnText: {color: colors.red, fontSize: 12, fontWeight: '700'},
-  addBankBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.red, borderRadius: 14, padding: 14, marginBottom: 8,
-  },
-  addBankIconBox: {
-    width: 26, height: 26, borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    alignItems: 'center', justifyContent: 'center', marginRight: 8,
-  },
-  addBankText: {color: '#FFFFFF', fontSize: 14, fontWeight: '800'},
-
-  // ── Documents ──
-  progressCard: {
-    backgroundColor: '#FFFFFF', borderRadius: 16,
-    padding: 16, marginBottom: 14, ...shadow,
-    borderWidth: 1, borderColor: colors.line,
-  },
-  progressTopRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14},
-  progressLabel: {color: colors.muted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4},
-  progressFraction: {color: colors.text, fontSize: 22, fontWeight: '900'},
-  progressCircle: {
-    width: 54, height: 54, borderRadius: 27,
-    backgroundColor: 'rgba(76,175,80,0.12)',
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 3, borderColor: '#4CAF50',
-  },
-  progressPct: {color: '#2E7D32', fontSize: 14, fontWeight: '900'},
-  progressTrack: {height: 8, backgroundColor: '#F0F0F0', borderRadius: 4, overflow: 'hidden', marginBottom: 12},
-  progressFill: {height: '100%', backgroundColor: '#4CAF50', borderRadius: 4},
-  progressStats: {flexDirection: 'row', justifyContent: 'space-evenly', marginTop: 4},
-  progressStatItem: {flexDirection: 'row', alignItems: 'center', gap: 5},
-  progressStatDot: {width: 8, height: 8, borderRadius: 4},
-  progressStatCount: {color: colors.text, fontSize: 13, fontWeight: '800'},
-  progressStatLabel: {color: colors.muted, fontSize: 11},
-  docCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#FFFFFF', borderRadius: 14,
-    padding: 13, marginBottom: 10,
-    borderWidth: 1, borderColor: colors.line, ...shadow,
-  },
-  docIconBox: {
-    width: 46, height: 46, borderRadius: 13,
-    alignItems: 'center', justifyContent: 'center', marginRight: 12,
-  },
-  docInfo: {flex: 1},
-  docName: {color: colors.text, fontSize: 14, fontWeight: '800', marginBottom: 3},
-  docDesc: {color: colors.muted, fontSize: 11},
-  docRight: {alignItems: 'flex-end', gap: 6},
-  docStatusBadge: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8,
-  },
-  docStatusText: {fontSize: 11, fontWeight: '800'},
-  uploadBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.red,
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
-  },
-  uploadBtnText: {color: '#FFFFFF', fontSize: 11, fontWeight: '700'},
-  tipsCard: {
-    backgroundColor: 'rgba(74,144,226,0.07)',
-    borderWidth: 1, borderColor: 'rgba(74,144,226,0.25)',
-    borderRadius: 12, padding: 13, marginTop: 4,
-  },
-  tipsHeader: {flexDirection: 'row', alignItems: 'center', marginBottom: 8},
-  tipsTitle: {color: '#4A90E2', fontSize: 13, fontWeight: '800'},
-  tipRow: {flexDirection: 'row', alignItems: 'center', marginBottom: 3},
-  tipsText: {color: colors.muted, fontSize: 12},
-
-  // ── Logout ──
-  logoutBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(244,67,54,0.08)',
-    borderWidth: 1, borderColor: 'rgba(244,67,54,0.25)',
-    borderRadius: 14, padding: 14, marginTop: 8, marginBottom: 16,
-  },
-  logoutText: {color: '#F44336', fontSize: 15, fontWeight: '800', marginLeft: 8},
-  versionText: {color: colors.muted, fontSize: 12, textAlign: 'center', marginBottom: 10},
+const avS = StyleSheet.create({
+  wrap: {backgroundColor:'rgba(255,255,255,0.22)', borderWidth:3,
+         borderColor:'rgba(255,255,255,0.55)', overflow:'hidden',
+         alignItems:'center', justifyContent:'center'},
+  txt:  {color:WHITE, fontWeight:'900', letterSpacing:1},
 });
 
-export default ProfilePage;
+/* ─── FormField (read-only display) ─────────────────────── */
+function FormField({label, value, placeholder, keyboardType, last}) {
+  return (
+    <View style={[ffS.wrap, last && {marginBottom:0}]}>
+      <Text style={ffS.label}>{label}</Text>
+      <View style={[ffS.inputRow, ffS.inputReadOnly]}>
+        <TextInput
+          style={[ffS.input, {color: GREY}]}
+          value={value}
+          placeholder={placeholder || `—`}
+          placeholderTextColor="#C0C0C0"
+          keyboardType={keyboardType || 'default'}
+          editable={false}
+          autoCapitalize="words"
+        />
+      </View>
+    </View>
+  );
+}
+const ffS = StyleSheet.create({
+  wrap:        {marginBottom:14},
+  label:       {fontSize:10, fontWeight:'700', color:GREY,
+                 textTransform:'uppercase', letterSpacing:0.5, marginBottom:6},
+  inputRow:    {flexDirection:'row', alignItems:'center', borderWidth:1.5,
+                 borderColor:LINE, borderRadius:12, backgroundColor:'#FAFAFA',
+                 overflow:'hidden'},
+  inputReadOnly:{borderColor:'#EAEAEA', backgroundColor:'#F7F7F7'},
+  input:       {flex:1, height:48, paddingHorizontal:16, fontSize:14,
+                 fontWeight:'600', color:DARK},
+});
+
+/* ─── SectionCard ───────────────────────────────────────── */
+function SectionCard({icon, title, children}) {
+  return (
+    <View style={scS.card}>
+      <View style={scS.header}>
+        <View style={scS.iconBox}><Icon name={icon} size={16} color={RED}/></View>
+        <Text style={scS.title}>{title}</Text>
+      </View>
+      {children}
+    </View>
+  );
+}
+const scS = StyleSheet.create({
+  card:    {backgroundColor:WHITE, borderRadius:18, paddingHorizontal:16,
+             paddingTop:16, paddingBottom:6, marginBottom:14,
+             shadowColor:'#000', shadowOffset:{width:0,height:2},
+             shadowOpacity:0.07, shadowRadius:8, elevation:3,
+             borderWidth:1, borderColor:'rgba(0,0,0,0.04)'},
+  header:  {flexDirection:'row', alignItems:'center', marginBottom:12},
+  iconBox: {width:30, height:30, borderRadius:8, backgroundColor:RED_SOFT,
+             alignItems:'center', justifyContent:'center', marginRight:10},
+  title:   {fontSize:15, fontWeight:'800', color:DARK},
+});
+
+/* ─── LinkRow ───────────────────────────────────────────── */
+function LinkRow({icon, iconColor, iconBg, label, sub, onPress, last}) {
+  return (
+    <Pressable onPress={onPress}
+      style={({pressed}) => [lkS.row, last && {borderBottomWidth:0}, pressed && {opacity:0.7}]}>
+      <View style={[lkS.iconBox, {backgroundColor:iconBg||RED_SOFT}]}>
+        <Icon name={icon} size={17} color={iconColor||RED}/>
+      </View>
+      <View style={lkS.text}>
+        <Text style={lkS.label}>{label}</Text>
+        {sub ? <Text style={lkS.sub}>{sub}</Text> : null}
+      </View>
+      <Icon name="chevron-right" size={18} color="#CCCCCC"/>
+    </Pressable>
+  );
+}
+const lkS = StyleSheet.create({
+  row:     {flexDirection:'row', alignItems:'center', paddingVertical:13,
+             borderBottomWidth:1, borderBottomColor:LINE},
+  iconBox: {width:36, height:36, borderRadius:10, alignItems:'center',
+             justifyContent:'center', marginRight:13},
+  text:    {flex:1},
+  label:   {fontSize:14, fontWeight:'700', color:DARK},
+  sub:     {fontSize:11, color:GREY, marginTop:2},
+});
+
+/* ─── Change Password Modal ─────────────────────────────── */
+function ChangePasswordModal({visible, onClose}) {
+  const [cur,  setCur]  = useState('');
+  const [nw,   setNw]   = useState('');
+  const [con,  setCon]  = useState('');
+  const [sCur, setSCur] = useState(false);
+  const [sNw,  setSNw]  = useState(false);
+  const [sCon, setSCon] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const reset = () => { setCur(''); setNw(''); setCon(''); };
+
+  const submit = async () => {
+    if (!cur || !nw || !con) { return; }
+    if (nw.length < 6)       { return; }
+    if (nw !== con)          { return; }
+    setBusy(true);
+    try {
+      const res = await authService.changePassword(cur, nw);
+      if (res.success) {
+        reset(); onClose();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fields = [
+    {label:'Current Password', val:cur, set:setCur, show:sCur, toggle:()=>setSCur(v=>!v)},
+    {label:'New Password',     val:nw,  set:setNw,  show:sNw,  toggle:()=>setSNw(v=>!v)},
+    {label:'Confirm Password', val:con, set:setCon, show:sCon, toggle:()=>setSCon(v=>!v)},
+  ];
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={mS.overlay}>
+        <View style={mS.card}>
+          <View style={mS.head}>
+            <View style={mS.headIcon}><Icon name="lock-reset" size={22} color={RED}/></View>
+            <View style={{flex:1, marginLeft:12}}>
+              <Text style={mS.headTitle}>Change Password</Text>
+              <Text style={mS.headSub}>Update your login password</Text>
+            </View>
+            <Pressable onPress={()=>{reset();onClose();}} hitSlop={10}>
+              <Icon name="close" size={22} color={GREY}/>
+            </Pressable>
+          </View>
+          <View style={mS.divider}/>
+          {fields.map((f,i) => (
+            <View key={i} style={mS.field}>
+              <Text style={mS.fieldLabel}>{f.label}</Text>
+              <View style={mS.inputRow}>
+                <TextInput value={f.val} onChangeText={f.set}
+                  secureTextEntry={!f.show} placeholder="••••••••"
+                  placeholderTextColor="#CCC" style={mS.input} autoCapitalize="none"/>
+                <Pressable onPress={f.toggle} hitSlop={8} style={mS.eye}>
+                  <Icon name={f.show?'eye-off-outline':'eye-outline'} size={18} color={GREY}/>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+          <Pressable onPress={submit} disabled={busy}
+            style={[mS.btn, busy && {opacity:0.55}]}>
+            <Icon name="lock-check" size={18} color={WHITE}/>
+            <Text style={mS.btnTxt}>{busy ? '  Updating…' : '  Update Password'}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const mS = StyleSheet.create({
+  overlay:   {flex:1, backgroundColor:'rgba(0,0,0,0.5)', justifyContent:'flex-end'},
+  card:      {backgroundColor:WHITE, borderTopLeftRadius:24, borderTopRightRadius:24,
+               paddingHorizontal:20, paddingTop:20, paddingBottom:36},
+  head:      {flexDirection:'row', alignItems:'center', marginBottom:14},
+  headIcon:  {width:44, height:44, borderRadius:12, backgroundColor:RED_SOFT,
+               alignItems:'center', justifyContent:'center'},
+  headTitle: {fontSize:17, fontWeight:'800', color:DARK},
+  headSub:   {fontSize:12, color:GREY, marginTop:2},
+  divider:   {height:1, backgroundColor:LINE, marginBottom:16},
+  field:     {marginBottom:14},
+  fieldLabel:{fontSize:12, fontWeight:'700', color:DARK, marginBottom:6},
+  inputRow:  {flexDirection:'row', alignItems:'center', borderWidth:1.5,
+               borderColor:LINE, borderRadius:12, backgroundColor:'#FAFAFA'},
+  input:     {flex:1, height:48, paddingHorizontal:14, fontSize:15, color:DARK},
+  eye:       {paddingHorizontal:12},
+  btn:       {flexDirection:'row', alignItems:'center', justifyContent:'center',
+               height:52, borderRadius:14, backgroundColor:RED, marginTop:6,
+               shadowColor:RED, shadowOffset:{width:0,height:5},
+               shadowOpacity:0.28, shadowRadius:10, elevation:5},
+  btnTxt:    {color:WHITE, fontSize:15, fontWeight:'800'},
+});
+
+/* ═══════════════════════════════════════════════════════════
+   MAIN EXPORT
+═══════════════════════════════════════════════════════════ */
+export default function ProfilePage({dealer: dealerProp, onLogout, onBack, onNavigate}) {
+  const [pwdModal,    setPwdModal]    = useState(false);
+  const [profileData, setProfileData] = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [form,        setForm]        = useState({
+    name:'', phone:'', dealerCode:'',
+    email:'', address:'', city:'', state:'', pincode:'',
+  });
+
+  useEffect(() => { loadProfile(); }, []);
+
+  /* ── Fetch profile from API ── */
+  const loadProfile = async () => {
+    try {
+      setLoading(true);
+      // Try /profile endpoint first (returns full registration data)
+      const res = await dealerService.getProfile();
+      if (res.success && res.data) {
+        setProfileData(res.data);
+        populateForm(res.data);
+      } else if (res.dealer) {
+        setProfileData(res.dealer);
+        populateForm(res.dealer);
+      } else {
+        // Fallback: use dealer prop passed from login
+        setProfileData(dealerProp || {});
+        populateForm(dealerProp || {});
+      }
+    } catch (err) {
+      console.warn('Profile API failed, using dealerProp:', err.message);
+      setProfileData(dealerProp || {});
+      populateForm(dealerProp || {});
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const populateForm = (d = {}) => {
+    setForm({
+      name:       d.name       || d.dealerName || '',
+      phone:      d.mobile     || d.phone      || '',
+      dealerCode: d.dealerCode || d.code       || '',
+      email:      d.email      || '',
+      address:    d.address    || '',
+      city:       d.city       || '',
+      state:      d.state      || '',
+      pincode:    d.pincode    || '',
+    });
+  };
+
+  /* ── Derived display values ── */
+  const d          = profileData || dealerProp || {};
+  const name       = d.name       || d.dealerName  || '';
+  const mobile     = d.mobile     || d.phone       || '';
+  const dealerCode = d.dealerCode || d.code        || '';
+  const photoUri   = d.photo      || d.profilePhoto || d.image || null;
+  const joinDate   = d.createdAt
+    ? new Date(d.createdAt).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})
+    : '';
+  const initials   = name.trim()
+    ? name.trim().split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase()
+    : 'D';
+
+  /* ── Loading state ── */
+  if (loading) {
+    return (
+      <SafeAreaView style={[pS.screen, {justifyContent:'center', alignItems:'center'}]} edges={['bottom']}>
+        <StatusBar barStyle="light-content" backgroundColor="#C94455"/>
+        <ActivityIndicator size="large" color={RED}/>
+        <Text style={{marginTop:12, color:GREY, fontSize:14}}>Loading profile…</Text>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <KeyboardAvoidingView
+      style={pS.screen}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <StatusBar barStyle="light-content" backgroundColor="#C94455"/>
+
+      {/* ── CURVED WAVE HEADER ── */}
+      <WaveHeader>
+        {/* Back button */}
+        {onBack && (
+          <Pressable onPress={onBack} style={pS.backBtn} hitSlop={10}>
+            <Icon name="arrow-left" size={22} color={WHITE}/>
+          </Pressable>
+        )}
+        {/* Bell button */}
+        {onNavigate && (
+          <Pressable onPress={()=>onNavigate('notifications')} style={pS.bellBtn} hitSlop={10}>
+            <Icon name="bell-ring-outline" size={22} color={WHITE}/>
+          </Pressable>
+        )}
+
+        {/* Avatar */}
+        <View style={pS.avatarWrap}>
+          <Avatar uri={photoUri} initials={initials} size={72}/>
+          {photoUri && (
+            <View style={pS.photoTick}>
+              <Icon name="check-circle" size={14} color={WHITE}/>
+            </View>
+          )}
+        </View>
+
+        <Text style={pS.hName}>{name || 'Dealer'}</Text>
+        {mobile ? <Text style={pS.hMobile}>+91 {mobile}</Text> : null}
+      </WaveHeader>
+
+      {/* ── SCROLL BODY ── */}
+      <ScrollView showsVerticalScrollIndicator={false}
+        contentContainerStyle={pS.body} keyboardShouldPersistTaps="handled">
+
+        {/* ── 1. Personal Details Card ── */}
+        <View style={pS.detailsCard}>
+          <View style={pS.cardHeader}>
+            <View style={pS.cardIconBox}>
+              <Icon name="account-circle-outline" size={16} color={RED}/>
+            </View>
+            <Text style={pS.cardTitle}>Personal Details</Text>
+          </View>
+          <View style={pS.formWrap}>
+            <FormField label="Dealer Name"   value={form.name}       placeholder="—" />
+            <FormField label="Phone Number"  value={form.phone}      placeholder="—" keyboardType="phone-pad"/>
+            <FormField label="Dealer Code"   value={form.dealerCode} placeholder="Assigned by admin"/>
+            <FormField label="Email ID"      value={form.email}      placeholder="—" keyboardType="email-address"/>
+            <FormField label="Address"       value={form.address}    placeholder="—" />
+            <View style={pS.twoCol}>
+              <View style={{flex:1, marginRight:8}}>
+                <FormField label="City"  value={form.city}  placeholder="—" last/>
+              </View>
+              <View style={{flex:1}}>
+                <FormField label="State" value={form.state} placeholder="—" last/>
+              </View>
+            </View>
+            <FormField label="Pincode" value={form.pincode} placeholder="—" keyboardType="number-pad" last/>
+          </View>
+        </View>
+
+        {/* ── 2. More Options ── */}
+        <SectionCard icon="view-grid-outline" title="More Options">
+          <LinkRow icon="bell-ring-outline" iconColor="#1565C0" iconBg="rgba(21,101,192,0.10)"
+            label="Notifications" sub="Alerts & updates"
+            onPress={()=>onNavigate&&onNavigate('notifications')}/>
+          <LinkRow icon="headset" iconColor="#00695C" iconBg="rgba(0,105,92,0.10)"
+            label="Support" sub="Help & customer care"
+            onPress={()=>onNavigate&&onNavigate('support')}/>
+          <LinkRow icon="chart-bar" iconColor="#6A1B9A" iconBg="rgba(106,27,154,0.10)"
+            label="Reports" sub="Sales & analytics"
+            onPress={()=>onNavigate&&onNavigate('reports')}/>
+          <LinkRow icon="lock-reset" iconColor={RED} iconBg={RED_SOFT}
+            label="Change Password" sub="Update your login password"
+            onPress={()=>setPwdModal(true)} last/>
+        </SectionCard>
+
+        {/* ── 4. Sign Out ── */}
+        <Pressable onPress={onLogout} style={pS.logoutBtn}>
+          <Icon name="logout-variant" size={19} color="#F44336"/>
+          <Text style={pS.logoutTxt}>  Sign Out</Text>
+        </Pressable>
+
+        
+      </ScrollView>
+
+      <ChangePasswordModal visible={pwdModal} onClose={()=>setPwdModal(false)}/>
+    </KeyboardAvoidingView>
+  );
+}
+
+/* ─── Main Styles ────────────────────────────────────────── */
+const pS = StyleSheet.create({
+  screen: {flex:1, backgroundColor:BG},
+
+  /* ── Wave header ── */
+  header: {
+    width:'100%', height:HEADER_H,
+    backgroundColor:'#C94455', overflow:'hidden',
+  },
+  headerContent: {
+    flex:1, alignItems:'center', justifyContent:'center',
+    paddingBottom:24, paddingTop:10,
+  },
+
+  /* Back / bell buttons */
+  backBtn: {position:'absolute', top:14, left:14, width:38, height:38,
+             borderRadius:19, backgroundColor:'rgba(255,255,255,0.18)',
+             alignItems:'center', justifyContent:'center', zIndex:10},
+  bellBtn: {position:'absolute', top:14, right:14, width:38, height:38,
+             borderRadius:19, backgroundColor:'rgba(255,255,255,0.18)',
+             alignItems:'center', justifyContent:'center', zIndex:10},
+
+  /* Avatar */
+  avatarWrap: {marginBottom:10, position:'relative'},
+  photoTick:  {position:'absolute', bottom:2, right:2, width:22, height:22,
+                borderRadius:11, backgroundColor:'#22C55E', borderWidth:2,
+                borderColor:WHITE, alignItems:'center', justifyContent:'center'},
+
+  /* Header text */
+  hName:    {color:WHITE, fontSize:20, fontWeight:'900', textAlign:'center', marginBottom:2},
+  hMobile:  {color:'rgba(255,255,255,0.75)', fontSize:12, fontWeight:'600', marginBottom:4},
+  hCodeRow: {flexDirection:'row', alignItems:'center', marginBottom:8},
+  hCode:    {color:'rgba(255,255,255,0.80)', fontSize:12, fontWeight:'600'},
+
+  /* Scroll body */
+  body: {paddingHorizontal:14, paddingTop:16, paddingBottom:40},
+
+  /* Personal Details card */
+  detailsCard: {
+    backgroundColor:WHITE, borderRadius:18, marginBottom:14,
+    shadowColor:'#000', shadowOffset:{width:0,height:2},
+    shadowOpacity:0.07, shadowRadius:8, elevation:3,
+    borderWidth:1, borderColor:'rgba(0,0,0,0.04)', overflow:'hidden',
+  },
+  cardHeader: {
+    flexDirection:'row', alignItems:'center',
+    paddingHorizontal:16, paddingTop:16, paddingBottom:12,
+    borderBottomWidth:1, borderBottomColor:LINE,
+  },
+  cardIconBox: {width:30, height:30, borderRadius:8, backgroundColor:RED_SOFT,
+                 alignItems:'center', justifyContent:'center', marginRight:10},
+  cardTitle:   {fontSize:15, fontWeight:'800', color:DARK},
+  formWrap:    {paddingHorizontal:16, paddingTop:16, paddingBottom:8},
+  twoCol:      {flexDirection:'row'},
+
+  /* Logout */
+  logoutBtn: {flexDirection:'row', alignItems:'center', justifyContent:'center',
+               marginTop:4, marginBottom:12, paddingVertical:15,
+               backgroundColor:WHITE, borderRadius:14,
+               borderWidth:1.5, borderColor:'#FFCDD2',
+               shadowColor:'#000', shadowOffset:{width:0,height:2},
+               shadowOpacity:0.06, shadowRadius:6, elevation:2},
+  logoutTxt: {fontSize:15, fontWeight:'800', color:'#F44336'},
+  version:   {textAlign:'center', fontSize:11, color:GREY, marginTop:4},
+});

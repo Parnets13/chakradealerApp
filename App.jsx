@@ -5,6 +5,7 @@ import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 
 import SplashScreen from './src/components/SplashScreen';
+import DealerRegistrationScreen from './src/components/DealerRegistrationScreen';
 import AuthScreens from './src/components/AuthScreens';
 import DealerDashboard from './src/components/DealerDashboard';
 
@@ -12,6 +13,7 @@ const Stack = createNativeStackNavigator();
 
 const APP_STAGE = {
   SPLASH: 'splash',
+  REGISTRATION: 'registration',
   AUTH: 'auth',
   DASHBOARD: 'dashboard',
 };
@@ -55,6 +57,9 @@ function App() {
   const [stage, setStage] = useState(APP_STAGE.SPLASH);
   const [dashboardPage, setDashboardPage] = useState('home');
   const [isReady, setIsReady] = useState(false);
+  const [dealerData, setDealerData] = useState(null);
+  const [registeredName, setRegisteredName] = useState('');
+  const [regFormData, setRegFormData] = useState(null); // registration form data for profile fallback
 
   useEffect(() => {
     console.log('');
@@ -68,8 +73,8 @@ function App() {
     setIsReady(true);
     
     const splashTimer = setTimeout(() => {
-      console.log('✅ Splash complete, moving to Auth screen');
-      setStage(APP_STAGE.AUTH);
+      console.log('✅ Splash complete, moving to Registration screen');
+      setStage(APP_STAGE.REGISTRATION);
     }, SPLASH_DURATION_MS);
 
     return () => clearTimeout(splashTimer);
@@ -84,6 +89,11 @@ function App() {
     const backHandler = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
+        if (stage === APP_STAGE.AUTH) {
+          // On login screen, back goes to registration
+          setStage(APP_STAGE.REGISTRATION);
+          return true;
+        }
         if (stage === APP_STAGE.DASHBOARD) {
           // If not on home page, go back to home
           if (dashboardPage !== 'home') {
@@ -133,6 +143,22 @@ function App() {
     );
   }
 
+  if (stage === APP_STAGE.REGISTRATION) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <DealerRegistrationScreen
+          onGoToLogin={(name, regData) => {
+            console.log('➡️  Going to Login from Registration, name:', name);
+            if (name) setRegisteredName(name);
+            if (regData) setRegFormData(regData);
+            setStage(APP_STAGE.AUTH);
+          }}
+        />
+      </SafeAreaProvider>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <SafeAreaProvider>
@@ -147,9 +173,15 @@ function App() {
               <Stack.Screen name="Auth">
                 {() => (
                   <AuthScreens
+                    registeredName={registeredName}
                     onAuthenticated={(dealer) => {
                       console.log('✅ Authentication successful:', dealer);
+                      setDealerData(dealer || null);
                       setStage(APP_STAGE.DASHBOARD);
+                    }}
+                    onGoToRegister={() => {
+                      console.log('➡️  Going to Registration from Login');
+                      setStage(APP_STAGE.REGISTRATION);
                     }}
                   />
                 )}
@@ -158,8 +190,11 @@ function App() {
               <Stack.Screen name="Dashboard">
                 {() => (
                   <DealerDashboard 
+                    dealer={dealerData || regFormData}
                     onLogout={() => {
                       console.log('🚪 Logging out...');
+                      setDealerData(null);
+                      setRegFormData(null);
                       setStage(APP_STAGE.AUTH);
                     }}
                     activePage={dashboardPage}

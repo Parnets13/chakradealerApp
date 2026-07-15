@@ -11,9 +11,23 @@ import {
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, shadow } from './theme';
 import productService from './services/productService';
-import { loadCart, saveCart } from './CartScreen';
+
+// Cart helpers (previously in CartScreen)
+const CART_KEY = 'dealer_cart';
+const loadCart = async () => {
+  try {
+    const raw = await AsyncStorage.getItem(CART_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+};
+const saveCart = async (cart) => {
+  try {
+    await AsyncStorage.setItem(CART_KEY, JSON.stringify(cart));
+  } catch { /* ignore */ }
+};
 
 // Check if product can be added to cart
 const isProductOrderable = (product) => {

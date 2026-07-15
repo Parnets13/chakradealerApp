@@ -11,8 +11,8 @@ const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !=
 // ────────────────────────────────────────────────────────────────
 // Use your computer's actual IP address: 192.168.1.21
 // Find your IP: Run "ipconfig" on Windows, "ifconfig" on Mac/Linux
-// NOTE: Backend runs on PORT 5001 (see chakraIndustries-backend/.env)
-const LOCAL_BACKEND_URL = 'http://192.168.1.21:5001/api/dealer';
+// NOTE: Backend runs on PORT 5000 (see chakraIndustries-backend/.env)
+const LOCAL_BACKEND_URL = 'http://192.168.1.25:5000/api/dealer';
 
 // ────────────────────────────────────────────────────────────────
 // OPTION 2: PRODUCTION BACKEND (Always works)
@@ -63,11 +63,14 @@ console.log('');
 export const API_ENDPOINTS = {
   // Auth
   AUTH: {
+    REGISTER: '/auth/register',
     SEND_OTP: '/auth/send-otp',
     VERIFY_OTP: '/auth/verify-otp',
     LOGIN: '/auth/login',
     LOGOUT: '/auth/logout',
-    ME: '/auth/me'
+    ME: '/auth/me',
+    UPDATE_PROFILE: '/profile/update',
+    CHANGE_PASSWORD: '/auth/change-password',
   },
   
   // Profile & Dashboard

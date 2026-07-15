@@ -1,22 +1,26 @@
 /**
  * returnService.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Fetches MaterialReturn data via the dealer-protected route:
- *   GET  /api/dealer/returns        → materialReturn list (same data as Admin table)
- *   POST /api/dealer/returns/create → create new return request
- *
- * Uses API_BASE_URL (/api/dealer) + protectDealer JWT — so dealer token works.
+ * All dealer return API calls via /api/dealer/returns
+ * Uses the dealer JWT (protectDealer middleware) — token stored in AsyncStorage.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import apiService from './apiService';
 
 class ReturnService {
   /**
-   * Fetch all material returns.
-   * @param {object} params  Optional: { search } — partial match on mrId/invoiceNo/productName
+   * Fetch delivered orders eligible for return.
+   * Returns shaped { _id, orderId, orderDate, value, lineItems[] }
    */
-  async getReturns(params = {}) {
-    // Filter out empty values so we don't send ?search= to backend
+  getEligibleOrders() {
+    return apiService.get('/returns/eligible-orders');
+  }
+
+  /**
+   * List this dealer's own return requests (MaterialReturn records).
+   * @param {object} params  Optional: { stage, search }
+   */
+  getReturns(params = {}) {
     const clean = Object.fromEntries(
       Object.entries(params).filter(([, v]) => v != null && v !== ''),
     );
@@ -25,17 +29,16 @@ class ReturnService {
 
   /**
    * Create a new return request.
-   * Required: supplierName, invoiceNo, productName, returnQty, reason
-   * Optional: value
+   * @param {object} data  { orderId, productName, returnQty, reason, ... }
    */
-  async createReturn(returnData) {
-    return apiService.post('/returns/create', returnData);
+  createReturn(data) {
+    return apiService.post('/returns', data);
   }
 
   /**
    * Get a single return by MongoDB _id.
    */
-  async getReturnById(id) {
+  getReturnById(id) {
     return apiService.get(`/returns/${id}`);
   }
 }

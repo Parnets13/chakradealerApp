@@ -17,8 +17,6 @@ import Svg, {Circle, Defs, LinearGradient, Path, Stop, Rect, G} from 'react-nati
 const {width: SCREEN_W} = Dimensions.get('window');
 
 import {shadow} from './theme';
-import CartScreen from './CartScreen';
-import CheckoutScreen from './CheckoutScreen';
 import OrdersPage from './OrdersPage';
 import InventoryPage from './InventoryPage';
 import DispatchTrackingPage from './DispatchTrackingPage';
@@ -67,21 +65,19 @@ const C = {
 const NAV_ITEMS = [
   {id: 'home',     label: 'Home',    icon: 'home'},
   {id: 'orders',   label: 'Orders',  icon: 'clipboard-text-outline'},
-  {id: 'stock',    label: 'Stock',   icon: 'cube-outline'},
   {id: 'dispatch', label: 'Track',   icon: 'truck-delivery-outline'},
+  {id: 'returns',  label: 'Returns', icon: 'package-variant'},
   {id: 'profile',  label: 'Profile', icon: 'account-outline'},
 ];
 
 // ─── Root Component ────────────────────────────────────────────────────────────
-function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange}) {
+function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange, dealer}) {
   const [activeTab, setActiveTab] = useState('home');
   const [activePage, setActivePage] = useState(externalActivePage || 'home');
-  // Cart data passed from CategoryPage → CartScreen → CheckoutScreen
-  const [cartData, setCartData] = useState(null);
   // Order ID to highlight when navigating from My Orders → Dispatch & Tracking
   const [dispatchOrderId, setDispatchOrderId] = useState(null);
-  // Order data to pre-fill PlaceOrderPage when re-ordering from My Orders
-  const [reorderData, setReorderData] = useState(null);
+  // Order data to send to PlaceOrderPage when dealer clicks Place Order from My Orders
+  const [placeOrderData, setPlaceOrderData] = useState(null);
 
   React.useEffect(() => {
     if (externalActivePage) {
@@ -96,6 +92,13 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
     setActivePage(page);
     if (onPageChange) onPageChange(page);
     if (NAV_ITEMS.map(n => n.id).includes(page)) setActiveTab(page);
+  };
+
+  // Called from OrdersPage "Place Order" button — navigate to PlaceOrderPage with that order pre-loaded
+  const handlePlaceOrderFromMyOrders = (order) => {
+    setPlaceOrderData(order || null);
+    setActivePage('placeorder');
+    if (onPageChange) onPageChange('placeorder');
   };
 
   // Called from OrdersPage "Track Order" button — go to dispatch page with that order highlighted
@@ -114,11 +117,12 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
       <SafeAreaView style={styles.screen} edges={['top']}>
         <StatusBar barStyle="light-content" backgroundColor={C.primary} />
         <View style={styles.subPageContainer}>
-          {activePage === 'orders'        && <OrdersPage onBack={handleBackToHome} onNavigateToDispatch={handleTrackOrder} />}
+          {activePage === 'orders'        && <OrdersPage onBack={handleBackToHome} onNavigateToDispatch={handleTrackOrder} onPlaceOrder={handlePlaceOrderFromMyOrders} dealer={dealer} />}
+          {activePage === 'orderhistory'  && <OrdersPage onBack={handleBackToHome} onNavigateToDispatch={handleTrackOrder} onPlaceOrder={handlePlaceOrderFromMyOrders} dealer={dealer} />}
           {activePage === 'inventory'     && <InventoryPage onBack={handleBackToHome} />}
           {activePage === 'stock'         && <InventoryPage onBack={handleBackToHome} />}
           {activePage === 'dispatch'      && <DispatchTrackingPage onBack={() => { setDispatchOrderId(null); handleBackToHome(); }} initialOrderId={dispatchOrderId} />}
-          {activePage === 'profile'       && <ProfilePage onLogout={onLogout} onBack={handleBackToHome} onNavigate={handleNavigate} />}
+          {activePage === 'profile'       && <ProfilePage dealer={dealer} onLogout={onLogout} onBack={handleBackToHome} onNavigate={handleNavigate} />}
           {activePage === 'ledger'        && <DealerLedgerPage onBack={handleBackToHome} />}
           {activePage === 'returns'       && <ReturnsPage onBack={handleBackToHome} />}
           {activePage === 'reports'       && <ReportsDashboardSection onBack={handleBackToHome} />}
@@ -128,7 +132,7 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
           {activePage === 'cart'          && <CartScreen onBack={() => handleNavigate('category')} onCheckout={(cart, grand, sub, gst) => { setCartData({ cart, grand, sub, gst }); handleNavigate('checkout'); }} />}
           {activePage === 'checkout'      && cartData && <CheckoutScreen cart={cartData.cart} grandTotal={cartData.grand} subTotal={cartData.sub} totalGst={cartData.gst} onBack={(target) => handleNavigate(target || 'cart')} onOrderSuccess={() => handleNavigate('orders')} onOrderFail={() => {}} />}
           {activePage === 'invoices'      && <InvoicesPage onBack={handleBackToHome} />}
-          {activePage === 'placeorder'    && <PlaceOrderPage onBack={handleBackToHome} onOrderPlaced={() => handleNavigate('orders')} />}
+          {activePage === 'placeorder'    && <PlaceOrderPage onBack={handleBackToHome} initialOrder={placeOrderData} onOrderPlaced={() => { setPlaceOrderData(null); handleNavigate('orders'); }} onNavigateToDispatch={handleTrackOrder} />}
           {activePage === 'receipts'      && <DealerReceiptsPage onBack={handleBackToHome} />}
         </View>
         <BottomNavigation activeTab={activeTab} onChange={tab => {
@@ -183,7 +187,6 @@ function HomePage({onNavigate}) {
 
   const dealerName     = dealer.name            || 'Dealer';
   const dealerCode     = dealer.dealerCode      || 'N/A';
-  const lastLogin      = dealer.lastLogin        || 'First login';
 
   const totalOrders      = stats.totalOrders              || 0;
   const pendingApproval  = stats.pendingApproval || stats.pendingOrders || 0;
@@ -210,16 +213,14 @@ function HomePage({onNavigate}) {
     );
   }
 
-  // ── Quick Actions (9 items) ──
+  // ── Quick Actions (6 items) ──
   const quickActions = [
-    {id: 'placeorder', label: 'Place Order',   icon: 'cart-plus',        nav: 'placeorder', color: C.primary,  bg: C.primaryLight},
-    {id: 'orders',     label: 'My Orders',     icon: 'clipboard-list',   nav: 'orders',     color: C.success,  bg: C.successLight},
-    {id: 'category',   label: 'Categories',    icon: 'view-grid',        nav: 'category',   color: C.purple,   bg: C.purpleLight},
-    {id: 'Stock',      label: 'Stock',         icon: 'package-variant',  nav: 'stock',  color: C.teal,     bg: C.tealLight},
-    {id: 'tracking',   label: 'Track Orders',  icon: 'truck-delivery',   nav: 'dispatch',   color: C.info,     bg: C.infoLight},
-    {id: 'ledger',     label: 'Ledger',        icon: 'book-open-variant',nav: 'ledger',     color: C.warning,  bg: C.warningLight},
-    {id: 'invoices',   label: 'Invoices',      icon: 'file-document',    nav: 'invoices',   color: C.primaryDark, bg: C.primaryLight},
-    {id: 'receipts',   label: 'Receipts',      icon: 'cash-check',       nav: 'receipts',   color: '#059669',  bg: '#D1FAE5'},    {id: 'returns',    label: 'Returns',       icon: 'keyboard-return',  nav: 'returns',    color: C.danger,   bg: C.dangerLight},
+    {id: 'neworder',     label: 'New Order',    icon: 'clipboard-plus',         nav: 'orderhistory', color: C.primary,     bg: C.primaryLight},
+    {id: 'tracking',     label: 'Track Order',  icon: 'truck-delivery',         nav: 'dispatch',     color: C.info,        bg: C.infoLight},
+    {id: 'placeorders',  label: 'Place Orders', icon: 'send-circle-outline',    nav: 'placeorder',   color: C.success,     bg: C.successLight},
+    {id: 'invoices',     label: 'Invoice',      icon: 'file-document',          nav: 'invoices',     color: C.primaryDark, bg: C.primaryLight},
+    {id: 'ledger',       label: 'Payment',      icon: 'cash-multiple',          nav: 'ledger',       color: C.warning,     bg: C.warningLight},
+    {id: 'returns',      label: 'Returns',      icon: 'package-variant',        nav: 'returns',      color: C.purple,      bg: C.purpleLight},
   ];
 
   return (
@@ -239,12 +240,6 @@ function HomePage({onNavigate}) {
               <View style={styles.dealerMetaChip}>
                 <Icon name="identifier" size={11} color={C.primary} />
                 <Text style={styles.dealerMetaChipText}>{dealerCode}</Text>
-              </View>
-              <View style={styles.dealerMetaChip}>
-                <Icon name="clock-outline" size={11} color={C.muted} />
-                <Text style={[styles.dealerMetaChipText, {color: C.muted}]}>
-                  Last: {lastLogin}
-                </Text>
               </View>
             </View>
           </View>
@@ -286,14 +281,29 @@ function HomePage({onNavigate}) {
       ══════════════════════════════════════════ */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.qaGrid}>
-          {quickActions.map(item => (
+        {/* Row 1 — Place Order + Track Order */}
+        <View style={styles.qaRow}>
+          {quickActions.slice(0, 2).map(item => (
+            <Pressable
+              key={item.id}
+              style={styles.qaItemWide}
+              onPress={() => onNavigate(item.nav)}>
+              <View style={[styles.qaIconWrap, {backgroundColor: item.bg}]}>
+                <Icon name={item.icon} size={26} color={item.color} />
+              </View>
+              <Text style={styles.qaLabel}>{item.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {/* Row 2 — Order History + Invoice + Payment + Returns */}
+        <View style={styles.qaRow}>
+          {quickActions.slice(2, 6).map(item => (
             <Pressable
               key={item.id}
               style={styles.qaItem}
               onPress={() => onNavigate(item.nav)}>
               <View style={[styles.qaIconWrap, {backgroundColor: item.bg}]}>
-                <Icon name={item.icon} size={24} color={item.color} />
+                <Icon name={item.icon} size={22} color={item.color} />
               </View>
               <Text style={styles.qaLabel}>{item.label}</Text>
             </Pressable>
@@ -301,31 +311,7 @@ function HomePage({onNavigate}) {
         </View>
       </View>
 
-      {/* ══════════════════════════════════════════
-          RECENT ORDERS
-      ══════════════════════════════════════════ */}
-      <View style={styles.section}>
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Recent Orders</Text>
-          <Pressable onPress={() => onNavigate('orders')}>
-            <Text style={styles.seeAll}>View All →</Text>
-          </Pressable>
-        </View>
-        {recentOrders.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Icon name="clipboard-text-off-outline" size={40} color={C.muted} />
-            <Text style={styles.emptyStateText}>No recent orders</Text>
-          </View>
-        ) : (
-          recentOrders.slice(0, 5).map(order => (
-            <RecentOrderCard
-              key={order.orderId}
-              order={order}
-              onNavigate={onNavigate}
-            />
-          ))
-        )}
-      </View>
+
 
       <View style={{height: 100}} />
     </>
@@ -551,23 +537,31 @@ function RecentOrderCard({order, onNavigate}) {
 // ─── BottomNavigation ─────────────────────────────────────────────────────────
 function BottomNavigation({activeTab, onChange}) {
   return (
-    <View style={styles.navBar}>
-      {NAV_ITEMS.map(item => {
-        const isActive = item.id === activeTab;
-        return (
-          <Pressable key={item.id} onPress={() => onChange(item.id)} style={styles.navItem}>
-            <Icon
-              name={item.icon}
-              size={24}
-              color={isActive ? C.primary : '#AAAAAA'}
-            />
-            <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
-              {item.label}
-            </Text>
-            {isActive && <View style={styles.navUnderline} />}
-          </Pressable>
-        );
-      })}
+    <View style={styles.navWrap}>
+      <View style={styles.navBar}>
+        {NAV_ITEMS.map(item => {
+          const isActive = item.id === activeTab;
+          return (
+            <Pressable
+              key={item.id}
+              onPress={() => onChange(item.id)}
+              style={styles.navItem}>
+              <View style={[styles.navIconWrap, isActive && styles.navIconWrapActive]}>
+                <Icon
+                  name={isActive
+                    ? item.icon.replace('-outline', '')
+                    : item.icon}
+                  size={isActive ? 22 : 21}
+                  color={isActive ? '#FFFFFF' : '#AAAAAA'}
+                />
+              </View>
+              <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
+                {item.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -795,28 +789,49 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // ── Quick Actions 2-column ──
-  qaGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 10},
-  qaItem: {
-    width: '22.5%',
-    alignItems: 'center',
+  // ── Quick Actions — 6 tiles (2 + 4 layout) ──
+  qaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
-  qaIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
+  qaItemWide: {
+    flex: 1,
+    marginHorizontal: 4,
     alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: C.card,
+    borderRadius: 16,
+    paddingVertical: 16,
     borderWidth: 1,
     borderColor: C.border,
     ...shadow,
   },
+  qaItem: {
+    flex: 1,
+    marginHorizontal: 3,
+    alignItems: 'center',
+    backgroundColor: C.card,
+    borderRadius: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    ...shadow,
+  },
+  qaIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
   qaLabel: {
     color: C.textSub,
     fontSize: 10,
-    fontWeight: '600',
-    marginTop: 6,
+    fontWeight: '700',
+    marginTop: 5,
     textAlign: 'center',
+    paddingHorizontal: 2,
   },
 
   // ── Order Cards ──
@@ -852,40 +867,54 @@ const styles = StyleSheet.create({
   emptyState: {alignItems: 'center', paddingVertical: 30},
   emptyStateText: {color: C.muted, fontSize: 14, marginTop: 8},
 
-  // ── Bottom Nav ──
+  // ── Bottom Nav — floating curved pill ──
+  navWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    paddingTop: 8,
+    backgroundColor: 'transparent',
+  },
   navBar: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#EEEEEE',
-    paddingBottom: 18,
-    paddingTop: 10,
-    paddingHorizontal: 4,
+    borderRadius: 32,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
     shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: {width: 0, height: -2},
-    elevation: 8,
+    shadowOpacity: 0.13,
+    shadowRadius: 18,
+    shadowOffset: {width: 0, height: 4},
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
   },
   navItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 3,
   },
-  navIconWrap: {},
-  navIconWrapActive: {},
-  navLabel: {color: '#AAAAAA', fontSize: 11, fontWeight: '500'},
-  navLabelActive: {color: C.primary, fontWeight: '700'},
-  navUnderline: {
-    position: 'absolute',
-    bottom: -10,
-    width: 28,
-    height: 3,
-    borderRadius: 2,
+  navIconWrap: {
+    width: 42,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navIconWrapActive: {
     backgroundColor: C.primary,
+    width: 48,
+    height: 36,
+    borderRadius: 18,
+    shadowColor: C.primary,
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
+    shadowOffset: {width: 0, height: 3},
+    elevation: 5,
   },
+  navLabel: {color: '#AAAAAA', fontSize: 10, fontWeight: '600'},
   navLabelActive: {color: C.primary, fontWeight: '800'},
+  navUnderline: {},
 });
 
 export default DealerDashboard;
