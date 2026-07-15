@@ -29,7 +29,7 @@ import NotificationsPage from './NotificationsPage';
 import CategoryPage from './CategoryPage';
 import InvoicesPage from './InvoicesPage';
 import PlaceOrderPage from './PlaceOrderPage';
-import DealerReceiptsPage from './DealerReceiptsPage';
+
 import DealerLedgerPage from './DealerLedgerPage';
 
 // ─── Design Tokens — Sri Chakra Industries Brand ─────────────────────────────
@@ -132,8 +132,13 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
           {activePage === 'cart'          && <CartScreen onBack={() => handleNavigate('category')} onCheckout={(cart, grand, sub, gst) => { setCartData({ cart, grand, sub, gst }); handleNavigate('checkout'); }} />}
           {activePage === 'checkout'      && cartData && <CheckoutScreen cart={cartData.cart} grandTotal={cartData.grand} subTotal={cartData.sub} totalGst={cartData.gst} onBack={(target) => handleNavigate(target || 'cart')} onOrderSuccess={() => handleNavigate('orders')} onOrderFail={() => {}} />}
           {activePage === 'invoices'      && <InvoicesPage onBack={handleBackToHome} />}
+<<<<<<< HEAD
           {activePage === 'placeorder'    && <PlaceOrderPage onBack={handleBackToHome} initialOrder={placeOrderData} onOrderPlaced={() => { setPlaceOrderData(null); handleNavigate('orders'); }} onNavigateToDispatch={handleTrackOrder} />}
           {activePage === 'receipts'      && <DealerReceiptsPage onBack={handleBackToHome} />}
+=======
+          {activePage === 'placeorder'    && <PlaceOrderPage onBack={handleBackToHome} onOrderPlaced={() => handleNavigate('orders')} />}
+          
+>>>>>>> d07ba22f8620b81be0ad63e36392e252e8cda204
         </View>
         <BottomNavigation activeTab={activeTab} onChange={tab => {
           setActiveTab(tab);
@@ -215,12 +220,23 @@ function HomePage({onNavigate}) {
 
   // ── Quick Actions (6 items) ──
   const quickActions = [
+<<<<<<< HEAD
     {id: 'neworder',     label: 'New Order',    icon: 'clipboard-plus',         nav: 'orderhistory', color: C.primary,     bg: C.primaryLight},
     {id: 'tracking',     label: 'Track Order',  icon: 'truck-delivery',         nav: 'dispatch',     color: C.info,        bg: C.infoLight},
     {id: 'placeorders',  label: 'Place Orders', icon: 'send-circle-outline',    nav: 'placeorder',   color: C.success,     bg: C.successLight},
     {id: 'invoices',     label: 'Invoice',      icon: 'file-document',          nav: 'invoices',     color: C.primaryDark, bg: C.primaryLight},
     {id: 'ledger',       label: 'Payment',      icon: 'cash-multiple',          nav: 'ledger',       color: C.warning,     bg: C.warningLight},
     {id: 'returns',      label: 'Returns',      icon: 'package-variant',        nav: 'returns',      color: C.purple,      bg: C.purpleLight},
+=======
+    {id: 'placeorder', label: 'Place Order',   icon: 'cart-plus',        nav: 'placeorder', color: C.primary,  bg: C.primaryLight},
+    {id: 'orders',     label: 'My Orders',     icon: 'clipboard-list',   nav: 'orders',     color: C.success,  bg: C.successLight},
+    {id: 'category',   label: 'Categories',    icon: 'view-grid',        nav: 'category',   color: C.purple,   bg: C.purpleLight},
+    {id: 'Stock',      label: 'Stock',         icon: 'package-variant',  nav: 'stock',  color: C.teal,     bg: C.tealLight},
+    {id: 'tracking',   label: 'Track Orders',  icon: 'truck-delivery',   nav: 'dispatch',   color: C.info,     bg: C.infoLight},
+    {id: 'ledger',     label: 'Ledger',        icon: 'book-open-variant',nav: 'ledger',     color: C.warning,  bg: C.warningLight},
+    {id: 'invoices',   label: 'Invoices',      icon: 'file-document',    nav: 'invoices',   color: C.primaryDark, bg: C.primaryLight},
+    
+>>>>>>> d07ba22f8620b81be0ad63e36392e252e8cda204
   ];
 
   return (
