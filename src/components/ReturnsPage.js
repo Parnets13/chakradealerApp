@@ -41,6 +41,36 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { launchImageLibrary } from 'react-native-image-picker';
 import apiService from './services/apiService';
+import { API_BASE_URL } from './config/api';
+
+// Derive server root from API_BASE_URL (strip /api/dealer suffix)
+// e.g. "http://192.168.1.9:5000/api/dealer" → "http://192.168.1.9:5000"
+const SERVER_ROOT = API_BASE_URL.replace(/\/api\/dealer.*$/, '').replace(/\/api$/, '');
+
+/**
+ * Resolve a photoUrl to a full URI usable by the Image component.
+ * Handles 3 cases:
+ *  1. Already a full http/https URL  → use as-is
+ *  2. Relative server path (/uploads/…) → prepend SERVER_ROOT
+ *  3. Local device file URI (file:// or content://) → use as-is
+ */
+const resolvePhotoUrl = (url) => {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+  if (trimmed.startsWith('file://') || trimmed.startsWith('content://')) return trimmed;
+  // Relative server path
+  return `${SERVER_ROOT}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+};
+
+/**
+ * Compact timestamp string for idempotency key generation.
+ * Using a named function (not arrow) avoids any hoisting surprises.
+ */
+function dealer_ts() {
+  return Date.now().toString(36).toUpperCase();
+}
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -142,6 +172,8 @@ const normalizeReturn = raw => {
     returnDate:     raw.returnDate || raw.createdAt || new Date().toISOString(),
     approvalStatus: raw.approvalStatus || 'Pending',
     currentStage:   raw.currentStage || 'REQUEST_RAISED',
+    // Resolve relative server paths to full URIs so Image component can load them
+    photoUrl:       resolvePhotoUrl(raw.photoUrl),
   };
 };
 
@@ -386,6 +418,20 @@ function ReturnDetailModal({ item, visible, onClose }) {
   const badge    = statusBadge(item.approvalStatus, item.currentStage);
   const timeline = Array.isArray(item.stageTimeline) ? item.stageTimeline : [];
 
+  // Track the real aspect ratio of the attached photo so the container
+  // is exactly as tall as the image — no cropping, no black bars.
+  const [photoRatio, setPhotoRatio] = React.useState(4 / 3);
+
+  React.useEffect(() => {
+    if (item.photoUrl) {
+      Image.getSize(
+        item.photoUrl,
+        (w, h) => { if (w > 0 && h > 0) setPhotoRatio(w / h); },
+        () => { setPhotoRatio(4 / 3); }   // fallback on error
+      );
+    }
+  }, [item.photoUrl]);
+
   const rows = [
     ['MR / Docket ID', item.mrId],
     ['Order No',       item.orderNo],
@@ -432,11 +478,15 @@ function ReturnDetailModal({ item, visible, onClose }) {
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Photo attachment preview */}
+            {/* Photo attachment — full image, no crop, no black bars */}
             {item.photoUrl ? (
               <>
                 <Text style={dd.secHdr}>Attached Photo</Text>
-                <Image source={{ uri: item.photoUrl }} style={dd.photoFull} resizeMode="cover" />
+                <Image
+                  source={{ uri: item.photoUrl }}
+                  style={[dd.photoFull, { aspectRatio: photoRatio }]}
+                  resizeMode="contain"
+                />
               </>
             ) : null}
 
@@ -499,7 +549,14 @@ const dd = StyleSheet.create({
   statusBadge:{ alignSelf: 'flex-start', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, marginBottom: 18 },
   statusTxt:  { fontSize: 14, fontWeight: '900' },
   secHdr:     { color: C.primary, fontSize: 11, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10 },
-  photoFull:  { width: '100%', height: 180, borderRadius: 14, marginBottom: 18, borderWidth: 1, borderColor: C.border },
+  photoFull:  {
+    width: '100%',
+    // aspectRatio is set dynamically from real image dimensions — no black bars
+    borderRadius: 16,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
   table:      { backgroundColor: '#F8FAFC', borderRadius: 14, borderWidth: 1, borderColor: C.border, overflow: 'hidden', marginBottom: 4 },
   row:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: '#F1F3F5' },
   rowLbl:     { color: C.muted, fontSize: 12, fontWeight: '600', flex: 1 },
@@ -788,6 +845,12 @@ function NewReturnModal({ visible, onClose, onSubmitted }) {
 
     setSubmitting(true);
 
+    // Generate a unique key for this submission attempt.
+    // Sent as x-idempotency-key header — if the same request is retried (network
+    // blip, double-tap) the backend returns the existing record instead of creating
+    // a duplicate. Each fresh submit gets a new key so it always creates a new record.
+    const idempotencyKey = `${dealer_ts()}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+
     const payload = {
       orderId:      safeOrderId,
       orderMongoId: product.orderMongoId || '',
@@ -799,6 +862,8 @@ function NewReturnModal({ visible, onClose, onSubmitted }) {
       remarks:      remarks.trim(),
       unitPrice:    product.unitPrice || 0,
       value:        (product.unitPrice || 0) * qty,
+      // localPhotoUri is for optimistic card display only — not sent to server
+      localPhotoUri: photo?.uri || null,
     };
 
     // Log payload for debugging
@@ -810,20 +875,31 @@ function NewReturnModal({ visible, onClose, onSubmitted }) {
       if (photo?.uri) {
         // Photo present → send as multipart/form-data
         const form = new FormData();
-        Object.entries(payload).forEach(([k, v]) => form.append(k, String(v)));
+        // Exclude localPhotoUri — it's client-only, not a server field
+        const { localPhotoUri: _skip, ...serverPayload } = payload;
+        Object.entries(serverPayload).forEach(([k, v]) => form.append(k, String(v)));
         form.append('photo', {
           uri: Platform.OS === 'android' ? photo.uri : photo.uri.replace('file://', ''),
           name: photo.fileName,
           type: photo.type,
         });
-        // Use request directly so we can pass multipart header
+        // x-idempotency-key prevents duplicate submissions on network retry / double-tap
         res = await apiService.request('/returns', {
           method: 'POST',
           body: form,
-          headers: { 'Content-Type': 'multipart/form-data' },
+          headers: { 'x-idempotency-key': idempotencyKey },
         });
       } else {
-        res = await apiService.post('/returns', payload);
+        // No photo — send JSON, strip localPhotoUri
+        const { localPhotoUri: _skip, ...serverPayload } = payload;
+        res = await apiService.request('/returns', {
+          method: 'POST',
+          body: serverPayload,
+          headers: {
+            'Content-Type': 'application/json',
+            'x-idempotency-key': idempotencyKey,
+          },
+        });
       }
 
       if (res?.success) {
@@ -831,14 +907,18 @@ function NewReturnModal({ visible, onClose, onSubmitted }) {
         onSubmitted(res.data || payload, payload);
       } else {
         const serverMsg = res?.message || res?.error || 'Please check the details and try again.';
-        console.error('[Returns] create failed — server response:', res);
+        console.error('[Returns] create failed — server response:', JSON.stringify(res, null, 2));
         Alert.alert('Submission Failed', serverMsg);
       }
     } catch (err) {
+      // Log every available detail so we can diagnose without guessing
       console.error('[Returns] create return request error:', {
-        message: err?.message,
-        response: err?.response?.data,
-        status: err?.response?.status,
+        message:    err?.message,
+        stack:      err?.stack,
+        response:   err?.response?.data,
+        status:     err?.response?.status,
+        idempotencyKey,
+        payload:    JSON.stringify(payload),
       });
       const serverMsg = err?.response?.data?.message || err?.message || 'Failed to submit return request.';
       Alert.alert('Error', serverMsg);
@@ -1149,9 +1229,14 @@ export default function ReturnsPage({ onBack }) {
       const unread = list.find(
         n => !n.read && (n.type === 'return_approved' || n.type === 'return_rejected')
       );
-      if (unread) setNotifBanner(unread);
+      if (unread) {
+        setNotifBanner(unread);
+        // Immediately refresh the returns list so card status badges update
+        // without waiting for the user to dismiss the notification banner
+        fetchReturns(true);
+      }
     } catch { /* silent — notifications are best-effort */ }
-  }, []);
+  }, [fetchReturns]);
 
   const markNotifRead = async notif => {
     setNotifBanner(null);
@@ -1186,6 +1271,8 @@ export default function ReturnsPage({ onBack }) {
       reason:      data?.reason     || formPayload?.reason    || '—',
       _id:         data?._id || data?.mrId || `temp_${Date.now()}`,
       createdAt:   data?.createdAt || new Date().toISOString(),
+      // Use local photo URI so thumbnail shows immediately before server refreshes
+      photoUrl:    data?.photoUrl || formPayload?.localPhotoUri || null,
     });
     setReturns(prev => [optimistic, ...prev]);
     setToast({ mrId: optimistic.mrId });

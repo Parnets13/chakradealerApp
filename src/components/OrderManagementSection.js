@@ -2,9 +2,9 @@
  * OrderManagementSection.js
  * My Orders screen — create + manage orders
  *
- * Card buttons: icon-only, tap icon to see name as tooltip
- * Card: shows only real created-order data (product, category, amount, status, date)
- * All buttons fully wired: Edit, Track, Place, View (with invoice count), Delete, Print, PDF
+ * Card buttons: Place Order, View, Edit, PDF
+ * Card: shows order data (product, category, amount, status, date)
+ * Create Order: dealer info auto-filled from logged-in account; no address/date/reference fields
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -13,9 +13,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-// apiService used only for delete/edit/invoices — not required for create
+
+// ─── apiService (dealer backend only — no admin calls) ────────────────────────
 let apiService;
-try { apiService = require('./services/apiService').default; } catch(_) { apiService = null; }
+try { apiService = require('./services/apiService').default; } catch (_) { apiService = null; }
+
+// ─── AsyncStorage for persisting local orders across reloads ─────────────────
+let AsyncStorage;
+try { AsyncStorage = require('@react-native-async-storage/async-storage').default; } catch (_) { AsyncStorage = null; }
+
+const ORDERS_STORAGE_KEY = '@dealer_orders_local';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const C = {
@@ -39,8 +46,13 @@ const ALL_STATUSES = [
   'Packing Started','Packing Completed','Invoice Generated','Ready for Dispatch',
   'Dispatched','In Transit','Delivered','Cancelled',
 ];
-const EDITABLE  = ['Order Placed', 'Pending Approval'];
-const PLACEABLE = ['Order Placed'];
+// Quick filter chips shown in the filter bar (subset for easy access)
+const QUICK_FILTERS = [
+  'All', 'Order Placed', 'Pending Approval', 'Approved', 'Rejected',
+  'Dispatched', 'Delivered', 'Cancelled',
+];
+const EDITABLE   = ['Order Placed', 'Pending Approval'];
+const PLACEABLE  = ['Order Placed'];
 const PRIORITIES = ['Normal', 'High', 'Urgent'];
 const PAY_MODES  = ['Cash', 'Credit', 'Online'];
 
@@ -296,28 +308,46 @@ const Inp = ({ style, ...props }) => (
 );
 
 // ─── CreateOrderModal ─────────────────────────────────────────────────────────
-function CreateOrderModal({ visible, onClose, onCreated }) {
-  const [saving,        setSaving]        = useState(false);
-  const [customerName,  setCustomerName]  = useState('');
-  const [mobile,        setMobile]        = useState('');
-  const [email,         setEmail]         = useState('');
-  const [productName,   setProductName]   = useState('');
-  const [categoryName,  setCategoryName]  = useState('');
-  const [qty,           setQty]           = useState('');
-  const [unitPrice,     setUnitPrice]     = useState('');
-  const [discount,      setDiscount]      = useState('');
-  const [gstPct,        setGstPct]        = useState('');
-  const [payMode,       setPayMode]       = useState('');
-  const [address,       setAddress]       = useState('');
-  const [city,          setCity]          = useState('');
-  const [stateName,     setStateName]     = useState('');
-  const [pincode,       setPincode]       = useState('');
-  const [poNum,         setPoNum]         = useState('');
-  const [refNum,        setRefNum]        = useState('');
-  const [remarks,       setRemarks]       = useState('');
-  const [priority,      setPriority]      = useState('Normal');
-  const [orderDate,     setOrderDate]     = useState(TODAY);
-  const [deliveryDate,  setDeliveryDate]  = useState(null);
+function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
+  const [saving, setSaving] = useState(false);
+
+  // ── Company/Vendor dropdown ───────────────────────────────────────────────
+  const [companies,        setCompanies]        = useState([]);
+  const [selectedCompany,  setSelectedCompany]  = useState(null);
+  const [loadingCompanies, setLoadingCompanies] = useState(false);
+
+  // ── Product dropdowns: Category → Product → auto Product ID ──────────────
+  const [categories,        setCategories]        = useState([]);
+  const [products,          setProducts]          = useState([]);
+  const [selectedCategory,  setSelectedCategory]  = useState(null);
+  const [selectedProduct,   setSelectedProduct]   = useState(null);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [loadingProducts,   setLoadingProducts]   = useState(false);
+
+  // Derived — auto-filled, read-only
+  const productName  = selectedProduct?.name     || '';
+  const categoryName = selectedProduct?.category || selectedCategory?.name || '';
+  const productId    = selectedProduct?.id       || selectedProduct?._id   || '';
+
+  // ── Form fields ───────────────────────────────────────────────────────────
+  const [qty,          setQty]          = useState('');
+  const [unitPrice,    setUnitPrice]    = useState('');
+  const [discount,     setDiscount]     = useState('');
+  const [gstPct,       setGstPct]       = useState('');
+  const [payMode,      setPayMode]      = useState('');
+  const [address,      setAddress]      = useState('');
+  const [city,         setCity]         = useState('');
+  const [stateName,    setStateName]    = useState('');
+  const [pincode,      setPincode]      = useState('');
+  const [poNum,        setPoNum]        = useState('');
+  const [refNum,       setRefNum]       = useState('');
+  const [remarks,      setRemarks]      = useState('');
+  const [priority,     setPriority]     = useState('Normal');
+  const [orderDate,    setOrderDate]    = useState(TODAY);
+  const [deliveryDate, setDeliveryDate] = useState(null);
+
+  // Unit from product (display only)
+  const unit = selectedProduct?.unit || selectedProduct?.uom || selectedProduct?.packSize || '';
 
   const qtyN   = Number(qty)       || 0;
   const priceN = Number(unitPrice) || 0;
@@ -328,58 +358,181 @@ function CreateOrderModal({ visible, onClose, onCreated }) {
   const gst = hasPrice ? +((sub * gstN) / 100).toFixed(2) : 0;
   const tot = +(sub + gst).toFixed(2);
 
+  // ── Load companies/vendors from dealer backend (corporate clients list) ──
+  const loadCompanies = () => {
+    if (!apiService) return;
+    setLoadingCompanies(true);
+    // Use inventory/products to extract unique vendor names, or fetch corporate clients
+    apiService.get('/products', { limit: 200 })
+      .then(r => {
+        const prods = r?.data || [];
+        // Build unique company list from product vendors field or use static fallback
+        const uniqueVendors = [];
+        const seen = new Set();
+        prods.forEach(p => {
+          const v = p.vendor || p.vendorName || p.manufacturer || '';
+          if (v && !seen.has(v)) { seen.add(v); uniqueVendors.push({ id: v, name: v }); }
+        });
+        // If no vendor data in products, keep empty (user will type manually)
+        setCompanies(uniqueVendors);
+      })
+      .catch(() => setCompanies([]))
+      .finally(() => setLoadingCompanies(false));
+  };
+
+  // ── Load categories from dealer backend ───────────────────────────────────
+  const loadCategories = () => {
+    if (!apiService) return;
+    setLoadingCategories(true);
+    apiService.get('/products/categories', { limit: 200 })
+      .then(r => setCategories(r?.data || []))
+      .catch(() => setCategories([]))
+      .finally(() => setLoadingCategories(false));
+  };
+
+  // ── Load products filtered by category name ────────────────────────────────
+  const loadProducts = (categoryName = null) => {
+    if (!apiService) return;
+    setLoadingProducts(true);
+    const params = { limit: 200 };
+    if (categoryName) params.category = categoryName;
+    apiService.get('/products', params)
+      .then(r => setProducts(r?.data || []))
+      .catch(() => setProducts([]))
+      .finally(() => setLoadingProducts(false));
+  };
+
   const reset = () => {
-    setCustomerName(''); setMobile(''); setEmail('');
-    setProductName(''); setCategoryName('');
+    setSelectedCompany(null); setCompanies([]);
+    setSelectedCategory(null); setSelectedProduct(null);
+    setCategories([]); setProducts([]);
     setQty(''); setUnitPrice(''); setDiscount(''); setGstPct('');
     setPayMode(''); setAddress(''); setCity(''); setStateName(''); setPincode('');
     setPoNum(''); setRefNum(''); setRemarks(''); setPriority('Normal');
     setOrderDate(TODAY); setDeliveryDate(null);
   };
 
-  useEffect(() => { if (!visible) return; reset(); }, [visible]);
+  useEffect(() => {
+    if (!visible) return;
+    reset();
+    loadCompanies();
+    loadCategories();
+    loadProducts();
+  }, [visible]);
 
-  const handleSubmit = () => {
-    if (!customerName.trim()) { Alert.alert('Validation', 'Customer Name is required.'); return; }
-    if (!productName.trim())  { Alert.alert('Validation', 'Product Name is required.');  return; }
-    if (!qty || qtyN < 1)     { Alert.alert('Validation', 'Enter a valid quantity (min 1).'); return; }
+  // Category selected → reload products for that category, clear product
+  const handleCategorySelect = (cat) => {
+    setSelectedCategory(cat);
+    setSelectedProduct(null);
+    // Pass category name — backend filters by categoryName
+    loadProducts(cat.name || cat.id);
+  };
 
-    const localId    = 'ORD-' + Date.now();
-    const now        = new Date().toISOString();
-    const fullAddr   = [address.trim(), city.trim(), stateName.trim(), pincode.trim()].filter(Boolean).join(', ');
+  // Product selected → auto-fill price/gst/discount/qty from product data + sync category
+  const handleProductSelect = (prod) => {
+    setSelectedProduct(prod);
+    // Price: sellingPrice > price > basePrice > unitPrice
+    const autoPrice = prod.sellingPrice ?? prod.price ?? prod.basePrice ?? prod.unitPrice ?? 0;
+    // GST
+    const autoGst   = prod.gst ?? prod.gstPercent ?? 0;
+    // Discount
+    const autoDisc  = prod.discountPercentage ?? prod.discount ?? 0;
+    // MOQ/min quantity as default qty
+    const autoMoq   = prod.moq ?? prod.minQuantity ?? prod.minQty ?? 1;
 
+    setUnitPrice(autoPrice > 0 ? String(autoPrice) : '');
+    setGstPct(autoGst > 0 ? String(autoGst) : '');
+    setDiscount(autoDisc > 0 ? String(autoDisc) : '');
+    // Auto-set qty to MOQ (minimum order quantity), user can change
+    setQty(String(autoMoq));
+
+    // Sync category
+    if (prod.category) {
+      const match = categories.find(c =>
+        c.name === prod.category || c.id === prod.categoryId || String(c._id) === String(prod.categoryId)
+      );
+      if (match) setSelectedCategory(match);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!productName.trim()) { Alert.alert('Validation', 'Please select a Product.');        return; }
+    if (!qty || qtyN < 1)    { Alert.alert('Validation', 'Enter a valid quantity (min 1).'); return; }
+    if (!payMode)            { Alert.alert('Validation', 'Please select a Payment Mode.');   return; }
+
+    setSaving(true);
+    const now      = new Date().toISOString();
+    const fullAddr = [address.trim(), city.trim(), stateName.trim(), pincode.trim()].filter(Boolean).join(', ');
+
+    // Dealer info auto-filled from logged-in account
+    const dealerInfo = {
+      name:    dealer?.businessName || dealer?.name || dealer?.dealerName || '',
+      mobile:  dealer?.mobile || dealer?.phone || '',
+      email:   dealer?.email || '',
+      address: fullAddr || dealer?.address || '',
+    };
+
+    // ── POST to dealer backend ────────────────────────────────────────────────
+    let savedOrder = null;
+    if (apiService && productId) {
+      try {
+        const res = await apiService.post('/orders/create-form', {
+          productId,
+          quantity:             qtyN,
+          unitPrice:            priceN || undefined,
+          discount:             discN  || undefined,
+          gstPercent:           gstN   || undefined,
+          priority,
+          paymentMode:          payMode,
+          deliveryAddress:      fullAddr,
+          orderDate:            toISO(orderDate) || now,
+          expectedDeliveryDate: deliveryDate ? toISO(deliveryDate) : undefined,
+          remarks:              remarks.trim(),
+          poNumber:             poNum.trim(),
+          referenceNumber:      refNum.trim(),
+          vendor:               dealerInfo.name,
+        });
+        if (res?.success && res?.data) savedOrder = res.data;
+      } catch (err) {
+        console.warn('Backend save failed, showing locally:', err?.message);
+      }
+    }
+
+    // ── Build local order for immediate card display ───────────────────────────
+    const localId  = savedOrder?.orderId || ('ORD-' + Date.now());
     const lineItem = {
-      productId:  localId,
-      name:       productName.trim(),
-      category:   categoryName.trim() || '—',
-      sku:        '',
+      productId,
+      name:       productName,
+      category:   categoryName || '—',
+      sku:        selectedProduct?.sku || '',
       quantity:   qtyN,
       unitPrice:  priceN,
       discount:   discN,
       gstPercent: gstN,
-      gstAmount:  gst,
-      total:      tot,
-      packSize:   '',
+      gstAmount:  savedOrder?.totalGst   ?? gst,
+      total:      savedOrder?.totalValue ?? tot,
+      packSize:   unit,
     };
 
     const newOrder = {
-      mongodbId:            localId,
+      mongodbId:            savedOrder?.mongodbId || localId,
       orderId:              localId,
       id:                   localId,
-      customer:             customerName.trim(),
-      customerName:         customerName.trim(),
-      mobile:               mobile.trim(),
-      email:                email.trim(),
-      _categoryName:        categoryName.trim() || '—',
-      _vendorName:          customerName.trim(),
-      _packSize:            '',
-      status:               'Order Placed',
+      customer:             dealerInfo.name,
+      customerName:         dealerInfo.name,
+      mobile:               dealerInfo.mobile,
+      email:                dealerInfo.email,
+      company:              selectedCompany?.name || '',
+      _categoryName:        categoryName || '—',
+      _vendorName:          selectedCompany?.name || dealerInfo.name,
+      _packSize:            unit,
+      status:               savedOrder?.status || 'Order Placed',
       source:               'DealerApp',
       priority,
-      value:                tot,
-      subTotal:             sub,
-      totalGst:             gst,
-      totalAmount:          tot,
+      value:                savedOrder?.totalValue ?? tot,
+      subTotal:             savedOrder?.subTotal   ?? sub,
+      totalGst:             savedOrder?.totalGst   ?? gst,
+      totalAmount:          savedOrder?.totalValue ?? tot,
       paymentMode:          payMode,
       deliveryAddress:      fullAddr,
       address:              address.trim(),
@@ -390,17 +543,21 @@ function CreateOrderModal({ visible, onClose, onCreated }) {
       referenceNumber:      refNum.trim(),
       remarks:              remarks.trim(),
       notes:                remarks.trim(),
-      createdAt:            now,
+      createdAt:            savedOrder?.createdAt || now,
       orderDate:            toISO(orderDate) || now,
       expectedDeliveryDate: deliveryDate ? toISO(deliveryDate) : null,
       lineItems:            [lineItem],
       items:                [lineItem],
-      _isLocal:             true,
+      _isLocal:             !savedOrder,
     };
 
+    setSaving(false);
     onCreated(newOrder);
     onClose();
-    Alert.alert('✅ Order Created', 'Order ' + localId + ' created successfully.');
+    Alert.alert(
+      '✅ Order Created',
+      `Order ${localId} created.\nStatus: Pending Approval`,
+    );
   };
 
   return (
@@ -417,45 +574,175 @@ function CreateOrderModal({ visible, onClose, onCreated }) {
           </View>
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 48 }}>
 
-            {/* Customer */}
-            <Sec title="Customer Details" icon="account-outline">
-              <Lbl t="CUSTOMER NAME *" /><Inp value={customerName} onChangeText={setCustomerName} placeholder="e.g. Rahul Sharma" />
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1 }}><Lbl t="MOBILE" /><Inp value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholder="e.g. 9876543210" /></View>
-                <View style={{ flex: 1 }}><Lbl t="EMAIL" /><Inp value={email} onChangeText={setEmail} keyboardType="email-address" placeholder="email@example.com" autoCapitalize="none" /></View>
-              </View>
+            {/* ── Product Selection ──────────────────────────────────────────── */}
+            <Sec title="Product Selection" icon="">
+              {/* 0. Company dropdown */}
+              <SDropdown
+                label="COMPANY / BRAND"
+                placeholder={loadingCompanies ? 'Loading companies…' : 'Select company…'}
+                value={selectedCompany?.id || ''}
+                items={companies}
+                keyField="id"
+                labelField="name"
+                loading={loadingCompanies}
+                onSelect={c => {
+                  setSelectedCompany(c);
+                  setSelectedCategory(null);
+                  setSelectedProduct(null);
+                  loadProducts();
+                }}
+              />
+              {/* 1. Category dropdown */}
+              <SDropdown
+                label="CATEGORY"
+                placeholder="Select a category…"
+                value={selectedCategory?.id || ''}
+                items={categories}
+                keyField="id"
+                labelField="name"
+                loading={loadingCategories}
+                onSelect={handleCategorySelect}
+              />
+              {/* 2. Product Name — filters after category selected */}
+              <SDropdown
+                label="PRODUCT NAME *"
+                placeholder={loadingProducts ? 'Loading products…' : 'Select a product…'}
+                value={selectedProduct?.id || selectedProduct?._id || ''}
+                items={products}
+                keyField="id"
+                labelField="name"
+                loading={loadingProducts}
+                onSelect={handleProductSelect}
+              />
+              {/* Auto-filled product details */}
+              {selectedProduct && (
+                <View style={{ backgroundColor: '#F8F9FA', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: C.line, marginTop: 4 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '900', color: C.red, letterSpacing: 0.5, marginBottom: 10 }}>PRODUCT DETAILS (AUTO-FILLED)</Text>
+
+                  {/* Product Name — prominent */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF0F0', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 8 }}>
+                    <Icon name="package-variant" size={14} color={C.red} />
+                    <Text style={{ flex: 1, fontSize: 13, fontWeight: '800', color: C.text }}>{selectedProduct.name || '—'}</Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+                    {/* Product ID */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF0F0', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
+                      <Icon name="identifier" size={11} color={C.red} />
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: C.text }}>ID: {selectedProduct.id || selectedProduct._id || '—'}</Text>
+                    </View>
+                    {/* SKU */}
+                    {selectedProduct.sku ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.blueBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
+                        <Icon name="barcode" size={11} color={C.blue} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: C.blue }}>SKU: {selectedProduct.sku}</Text>
+                      </View>
+                    ) : null}
+                    {/* Unit */}
+                    {unit ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F3E5F5', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
+                        <Icon name="package-up" size={11} color={C.purple} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: C.purple }}>Unit: {unit}</Text>
+                      </View>
+                    ) : null}
+                    {/* Stock — from /products (InventoryItem aggregated) */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: (selectedProduct.stock ?? 0) > 0 ? C.greenBg : '#FFF5F5', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
+                      <Icon name="warehouse" size={11} color={(selectedProduct.stock ?? 0) > 0 ? C.green : C.red} />
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: (selectedProduct.stock ?? 0) > 0 ? C.green : C.red }}>
+                        Stock: {selectedProduct.stock ?? selectedProduct.qty ?? '—'} {unit ? unit : ''}
+                      </Text>
+                    </View>
+                    {/* Stock Status */}
+                    {selectedProduct.stockStatus ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: selectedProduct.stockStatus === 'In Stock' ? C.greenBg : selectedProduct.stockStatus === 'Low Stock' ? C.amberBg : '#FFF5F5', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
+                        <Icon name={selectedProduct.stockStatus === 'In Stock' ? 'check-circle-outline' : selectedProduct.stockStatus === 'Low Stock' ? 'alert-circle-outline' : 'close-circle-outline'} size={11} color={selectedProduct.stockStatus === 'In Stock' ? C.green : selectedProduct.stockStatus === 'Low Stock' ? C.amber : C.red} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: selectedProduct.stockStatus === 'In Stock' ? C.green : selectedProduct.stockStatus === 'Low Stock' ? C.amber : C.red }}>{selectedProduct.stockStatus}</Text>
+                      </View>
+                    ) : null}
+                    {/* Per Price — from backend sellingPrice */}
+                    {priceN > 0 ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.amberBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
+                        <Icon name="currency-inr" size={11} color={C.amber} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: C.amber }}>Per Price: ₹{numFmt(priceN)}</Text>
+                      </View>
+                    ) : null}
+                    {/* GST */}
+                    {gstN > 0 ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.tealBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
+                        <Icon name="percent" size={11} color={C.teal} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: C.teal }}>GST: {gstN}%</Text>
+                      </View>
+                    ) : null}
+                    {/* Discount */}
+                    {discN > 0 ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.greenBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
+                        <Icon name="tag-percentage" size={11} color={C.green} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: C.green }}>Discount: {discN}%</Text>
+                      </View>
+                    ) : null}
+                    {/* MOQ */}
+                    {(selectedProduct.moq ?? selectedProduct.minQuantity) ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.navyBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
+                        <Icon name="counter" size={11} color={C.navy} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: C.navy }}>MOQ: {selectedProduct.moq ?? selectedProduct.minQuantity}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              )}
             </Sec>
 
-            {/* Product */}
-            <Sec title="Product Details" icon="package-variant-outline">
-              <Lbl t="PRODUCT NAME *" /><Inp value={productName} onChangeText={setProductName} placeholder="e.g. Steel Rod 12mm" />
-              <Lbl t="CATEGORY" /><Inp value={categoryName} onChangeText={setCategoryName} placeholder="e.g. Steel, Pipes, Hardware…" />
-            </Sec>
-
-            {/* Dates */}
-            <Sec title="Dates" icon="calendar-range">
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1 }}><DatePicker label="ORDER DATE" value={orderDate} onChange={setOrderDate} /></View>
-                <View style={{ flex: 1 }}><DatePicker label="DELIVERY DATE" value={deliveryDate} onChange={setDeliveryDate} /></View>
-              </View>
-            </Sec>
-            {/* Pricing */}
+            {/* ── Pricing — auto-filled from product, read-only except Quantity ── */}
             <Sec title="Pricing" icon="currency-inr">
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1 }}><Lbl t="QUANTITY *" /><Inp value={qty} onChangeText={setQty} keyboardType="numeric" placeholder="e.g. 10" /></View>
-                <View style={{ flex: 1 }}><Lbl t="UNIT PRICE (₹)" /><Inp value={unitPrice} onChangeText={setUnitPrice} keyboardType="decimal-pad" placeholder="e.g. 500" /></View>
-              </View>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1 }}><Lbl t="DISCOUNT %" /><Inp value={discount} onChangeText={setDiscount} keyboardType="decimal-pad" placeholder="0" /></View>
-                <View style={{ flex: 1 }}><Lbl t="GST %" /><Inp value={gstPct} onChangeText={setGstPct} keyboardType="decimal-pad" placeholder="0" /></View>
-              </View>
+              {/* Quantity — editable, pre-filled from MOQ */}
+              <Lbl t="QUANTITY *" />
+              {selectedProduct && (selectedProduct.moq ?? selectedProduct.minQuantity ?? 0) > 0 ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <Icon name="information-outline" size={12} color={C.navy} />
+                  <Text style={{ fontSize: 11, color: C.navy, fontWeight: '600' }}>
+                    MOQ: {selectedProduct.moq ?? selectedProduct.minQuantity} — auto-filled, you can edit
+                  </Text>
+                </View>
+              ) : null}
+              <Inp value={qty} onChangeText={setQty} keyboardType="numeric" placeholder="e.g. 10" />
+
+              {/* Auto-filled price details — read-only display */}
+              {selectedProduct ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                  {priceN > 0 && (
+                    <View style={fm.readBadge}>
+                      <Text style={fm.readLbl}>Unit Price</Text>
+                      <Text style={fm.readVal}>₹{numFmt(priceN)}</Text>
+                    </View>
+                  )}
+                  {discN > 0 && (
+                    <View style={[fm.readBadge, { backgroundColor: C.greenBg }]}>
+                      <Text style={[fm.readLbl, { color: C.green }]}>Discount</Text>
+                      <Text style={[fm.readVal, { color: C.green }]}>{discN}%</Text>
+                    </View>
+                  )}
+                  {gstN > 0 && (
+                    <View style={[fm.readBadge, { backgroundColor: C.tealBg }]}>
+                      <Text style={[fm.readLbl, { color: C.teal }]}>GST</Text>
+                      <Text style={[fm.readVal, { color: C.teal }]}>{gstN}%</Text>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.amberBg, borderRadius: 8, padding: 10, marginBottom: 10 }}>
+                  <Icon name="information-outline" size={13} color={C.amber} />
+                  <Text style={{ flex: 1, fontSize: 12, color: C.amber }}>Select a product above to auto-fill price, discount and GST.</Text>
+                </View>
+              )}
+
+              {/* Live calculation */}
               {hasPrice && (
                 <View style={fm.totals}>
                   <View style={fm.totalCol}><Text style={fm.totalLbl}>Sub Total</Text><Text style={fm.totalVal}>₹{numFmt(sub)}</Text></View>
                   <View style={fm.totalSep} />
                   <View style={fm.totalCol}><Text style={fm.totalLbl}>GST</Text><Text style={fm.totalVal}>₹{numFmt(gst)}</Text></View>
                   <View style={fm.totalSep} />
-                  <View style={fm.totalCol}><Text style={fm.totalLbl}>Total Amount</Text><Text style={[fm.totalVal, { color: C.red, fontSize: 15 }]}>₹{numFmt(tot)}</Text></View>
+                  <View style={fm.totalCol}><Text style={fm.totalLbl}>Grand Total</Text><Text style={[fm.totalVal, { color: C.red, fontSize: 14 }]}>₹{numFmt(tot)}</Text></View>
                 </View>
               )}
             </Sec>
@@ -471,25 +758,24 @@ function CreateOrderModal({ visible, onClose, onCreated }) {
               </View>
             </Sec>
 
+            {/* Order Date — single date picker only */}
+            <Sec title="Order Date" icon="calendar-outline">
+              <DatePicker label="ORDER DATE" value={orderDate} onChange={setOrderDate} />
+            </Sec>
+
             {/* Delivery Address */}
             <Sec title="Delivery Address" icon="map-marker-outline">
-              <Lbl t="ADDRESS" /><Inp value={address} onChangeText={setAddress} placeholder="Street / Building" multiline numberOfLines={2} style={{ minHeight: 58, textAlignVertical: 'top' }} />
+              <Lbl t="ADDRESS" />
+              <Inp value={address} onChangeText={setAddress} placeholder="Street / Building" multiline numberOfLines={2} style={{ minHeight: 58, textAlignVertical: 'top' }} />
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <View style={{ flex: 1 }}><Lbl t="CITY" /><Inp value={city} onChangeText={setCity} placeholder="e.g. Mumbai" /></View>
                 <View style={{ flex: 1 }}><Lbl t="STATE" /><Inp value={stateName} onChangeText={setStateName} placeholder="e.g. Maharashtra" /></View>
               </View>
-              <Lbl t="PINCODE" /><Inp value={pincode} onChangeText={setPincode} keyboardType="numeric" placeholder="e.g. 400001" />
+              <Lbl t="PINCODE" />
+              <Inp value={pincode} onChangeText={setPincode} keyboardType="numeric" placeholder="e.g. 400001" />
             </Sec>
 
-            {/* Reference Numbers */}
-            <Sec title="Reference Numbers" icon="pound-box-outline">
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1 }}><Lbl t="PO NUMBER (Optional)" /><Inp value={poNum} onChangeText={setPoNum} placeholder="e.g. PO-001" /></View>
-                <View style={{ flex: 1 }}><Lbl t="REFERENCE NO. (Optional)" /><Inp value={refNum} onChangeText={setRefNum} placeholder="e.g. REF-001" /></View>
-              </View>
-            </Sec>
-
-            {/* Additional Info */}
+            {/* Priority + Remarks */}
             <Sec title="Additional Info" icon="information-outline">
               <Lbl t="PRIORITY" />
               <View style={fm.chips}>
@@ -502,8 +788,6 @@ function CreateOrderModal({ visible, onClose, onCreated }) {
               <Lbl t="REMARKS / NOTES (Optional)" />
               <Inp value={remarks} onChangeText={setRemarks} placeholder="Additional notes or instructions…" multiline numberOfLines={4} style={{ minHeight: 80, textAlignVertical: 'top' }} />
             </Sec>
-
-            {/* Actions */}
             <View style={fm.actions}>
               <TouchableOpacity style={fm.draftBtn} onPress={onClose} disabled={saving}>
                 <Icon name="close-circle-outline" size={15} color={C.red} />
@@ -544,12 +828,16 @@ const fm = StyleSheet.create({
   createBtn:   { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.red, borderRadius: 12, paddingVertical: 14 },
   createBtnDim:{ backgroundColor: '#B0BEC5' },
   createTxt:   { color: C.white, fontSize: 14, fontWeight: '900' },
+  readBadge:   { flexDirection: 'column', alignItems: 'center', backgroundColor: C.amberBg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, minWidth: 80 },
+  readLbl:     { fontSize: 10, fontWeight: '700', color: C.amber, marginBottom: 2 },
+  readVal:     { fontSize: 14, fontWeight: '900', color: C.amber },
 });
 
 // ─── EditOrderModal ───────────────────────────────────────────────────────────
 function EditOrderModal({ visible, order, onClose, onSaved }) {
   const [priority, setPriority] = useState('Normal');
   const [notes,    setNotes]    = useState('');
+  const [remarks,  setRemarks]  = useState('');
   const [saving,   setSaving]   = useState(false);
   const [invoices, setInvoices] = useState([]);
   const [loadInv,  setLoadInv]  = useState(false);
@@ -558,10 +846,43 @@ function EditOrderModal({ visible, order, onClose, onSaved }) {
     if (!order) return;
     setPriority(order.priority || 'Normal');
     setNotes(order.notes || order.remarks || '');
+    setRemarks(order.remarks || order.notes || '');
     if (!apiService) { setInvoices([]); return; }
+    const ordId = order.orderId || order.id || '';
+    if (!ordId || order._isLocal) { setInvoices([]); return; }
+
+    // Get product name from lineItems for product-based invoice search
+    const lineItems = Array.isArray(order.lineItems) && order.lineItems.length > 0
+      ? order.lineItems : (order.items || []);
+    const prodName = lineItems[0]?.name || lineItems[0]?.itemName || '';
+    const poRef    = order.poNumber || order.purchaseOrderRef || '';
+
     setLoadInv(true);
-    apiService.get('/invoices', { search: order.orderId || order.id || '', limit: 20 })
-      .then(r => setInvoices(r?.data || []))
+
+    // Fetch invoices using multiple strategies and merge unique results
+    const fetches = [
+      // 1. Search by orderId (purchaseOrderRef / notes / uniqueId)
+      apiService.get('/invoices', { orderId: ordId, limit: 50 }),
+      // 2. Search by product name inside invoice items
+      prodName ? apiService.get('/invoices', { productName: prodName, limit: 50 }) : Promise.resolve({ data: [] }),
+      // 3. Search by PO number if available
+      poRef ? apiService.get('/invoices', { search: poRef, limit: 50 }) : Promise.resolve({ data: [] }),
+    ];
+
+    Promise.all(fetches)
+      .then(results => {
+        const seen = new Set();
+        const merged = [];
+        for (const r of results) {
+          for (const inv of (r?.data || [])) {
+            const key = String(inv.id || inv._id || inv.invoiceNo);
+            if (!seen.has(key)) { seen.add(key); merged.push(inv); }
+          }
+        }
+        // Sort by date descending
+        merged.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+        setInvoices(merged);
+      })
       .catch(() => setInvoices([]))
       .finally(() => setLoadInv(false));
   }, [order]);
@@ -571,22 +892,24 @@ function EditOrderModal({ visible, order, onClose, onSaved }) {
     try {
       if (apiService && !order?._isLocal) {
         const id = resolveId(order);
-        const res = await apiService.put(`/orders/${id}`, { priority, notes });
+        const res = await apiService.put(`/orders/${id}`, { priority, notes, remarks });
         if (!res?.success) { Alert.alert('Error', res?.message || 'Could not update order.'); setSaving(false); return; }
       }
-      onSaved({ ...order, priority, notes });
+      onSaved({ ...order, priority, notes, remarks });
       onClose();
     } catch (e) { Alert.alert('Error', e?.message || 'Could not update order.'); }
     finally { setSaving(false); }
   };
 
   if (!order) return null;
-  const st = ST[order.status] || { c: C.muted, bg: '#F2F2F2' };
+  const st    = ST[order.status] || { c: C.muted, bg: '#F2F2F2' };
+  const items = Array.isArray(order.lineItems) && order.lineItems.length > 0 ? order.lineItems : (order.items || []);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={em.overlay}>
         <View style={em.sheet}>
+          {/* Header */}
           <View style={em.hdr}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <View style={em.hdrIcon}><Icon name="pencil-outline" size={16} color={C.blue} /></View>
@@ -597,43 +920,110 @@ function EditOrderModal({ visible, order, onClose, onSaved }) {
             </View>
             <Pressable onPress={onClose} style={em.closeBtn}><Icon name="close" size={19} color={C.text} /></Pressable>
           </View>
+
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {/* Status + Amount banner */}
             <View style={em.banner}>
               <View style={[em.statusBadge, { backgroundColor: st.bg }]}>
+                <View style={[em.statusDot, { backgroundColor: st.c }]} />
                 <Text style={[em.statusTxt, { color: st.c }]}>{order.status}</Text>
               </View>
               <Text style={em.amtTxt}>{fmtAmt(order)}</Text>
             </View>
-            {/* Invoices */}
+
+            {/* ── Order Summary (read-only info) ── */}
+            <View style={em.section}>
+              <View style={em.secHead}>
+                <Icon name="information-outline" size={14} color={C.red} />
+                <Text style={em.secTitle}>Order Details</Text>
+              </View>
+              {[
+                { icon: 'store-outline',       label: 'Dealer',        val: order.customer || order.customerName },
+                { icon: 'phone-outline',        label: 'Mobile',        val: order.mobile },
+                { icon: 'tag-outline',          label: 'Category',      val: items[0]?.category || order._categoryName },
+                { icon: 'package-variant',      label: 'Product',       val: items[0]?.name },
+                { icon: 'counter',              label: 'Qty',           val: items[0]?.quantity ? String(items[0].quantity) : null },
+                { icon: 'currency-inr',         label: 'Unit Price',    val: items[0]?.unitPrice ? `₹${numFmt(items[0].unitPrice)}` : null },
+                { icon: 'cash-multiple',        label: 'Payment',       val: order.paymentMode },
+                { icon: 'map-marker-outline',   label: 'Address',       val: order.deliveryAddress || [order.address, order.city, order.state].filter(Boolean).join(', ') },
+                { icon: 'calendar-outline',     label: 'Order Date',    val: fmtDate(order.orderDate || order.createdAt) },
+                { icon: 'calendar-check',       label: 'Delivery Date', val: fmtDate(order.expectedDeliveryDate) },
+                { icon: 'pound-box-outline',    label: 'PO Number',     val: order.poNumber },
+              ].filter(r => r.val && r.val !== '—').map((r, i, arr) => (
+                <View key={r.label} style={[em.infoRow, i === arr.length - 1 && { borderBottomWidth: 0 }]}>
+                  <View style={em.infoLeft}>
+                    <Icon name={r.icon} size={12} color={C.muted} />
+                    <Text style={em.infoLbl}>{r.label}</Text>
+                  </View>
+                  <Text style={em.infoVal} numberOfLines={2}>{r.val}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* ── Invoices ── */}
             <View style={em.section}>
               <View style={em.secHead}>
                 <Icon name="file-document-outline" size={14} color={C.red} />
                 <Text style={em.secTitle}>Invoices ({loadInv ? '…' : invoices.length})</Text>
                 {loadInv && <ActivityIndicator size="small" color={C.red} style={{ marginLeft: 6 }} />}
               </View>
-              {invoices.length === 0 && !loadInv ? (
+
+              {/* Product name context */}
+              {items[0]?.name ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#F0F4FF', borderRadius: 7, paddingHorizontal: 9, paddingVertical: 5, marginBottom: 8 }}>
+                  <Icon name="package-variant" size={11} color={C.blue} />
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: C.blue }}>Product: {items[0].name}</Text>
+                </View>
+              ) : null}
+
+              {order._isLocal ? (
+                <View style={em.noInv}>
+                  <Icon name="cloud-upload-outline" size={28} color={C.line} />
+                  <Text style={em.noInvTxt}>Order not yet synced — place order to generate invoices</Text>
+                </View>
+              ) : invoices.length === 0 && !loadInv ? (
                 <View style={em.noInv}>
                   <Icon name="file-document-remove-outline" size={28} color={C.line} />
-                  <Text style={em.noInvTxt}>No invoices yet for this order</Text>
+                  <Text style={em.noInvTxt}>No invoices found for this order/product</Text>
                 </View>
               ) : (
-                invoices.map((inv, i) => (
-                  <View key={inv.id || i} style={em.invRow}>
-                    <View style={em.invLeft}>
-                      <Text style={em.invNo}>{inv.invoiceNo || `INV-${i + 1}`}</Text>
-                      <Text style={em.invDate}>{fmtDate(inv.date) || '—'}</Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={em.invAmt}>{inv.amount || '—'}</Text>
-                      <View style={[em.invBadge, { backgroundColor: inv.status === 'Paid' ? C.greenBg : inv.status === 'Overdue' ? '#FFF5F5' : C.amberBg }]}>
-                        <Text style={[em.invBadgeTxt, { color: inv.status === 'Paid' ? C.green : inv.status === 'Overdue' ? C.red : C.amber }]}>{inv.status || 'Pending'}</Text>
+                invoices.map((inv, i) => {
+                  const payStatus = inv.status || inv.paymentStatus || 'Pending';
+                  const isPaid    = payStatus === 'Paid';
+                  const isOverdue = payStatus === 'Overdue';
+                  const badgeBg   = isPaid ? C.greenBg : isOverdue ? '#FFF5F5' : C.amberBg;
+                  const badgeClr  = isPaid ? C.green   : isOverdue ? C.red     : C.amber;
+                  const firstInvItem = inv.items && inv.items.length > 0 ? inv.items[0] : null;
+                  return (
+                    <View key={inv.id || inv.invoiceNo || i} style={em.invRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={em.invNo}>{inv.invoiceNo || inv.invoiceNumber || `INV-${i + 1}`}</Text>
+                        {firstInvItem?.description ? (
+                          <Text style={{ fontSize: 10, color: C.blue, fontWeight: '600', marginTop: 1 }} numberOfLines={1}>
+                            {firstInvItem.description}{inv.items?.length > 1 ? ` +${inv.items.length - 1}` : ''}
+                          </Text>
+                        ) : null}
+                        <Text style={em.invDate}>{inv.date || fmtDate(inv.createdAt)}</Text>
+                        {inv.orderNo ? (
+                          <Text style={{ fontSize: 9, color: C.muted, fontWeight: '600' }}>PO: {inv.orderNo}</Text>
+                        ) : null}
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={em.invAmt}>{inv.grandTotal ? `₹${numFmt(inv.grandTotal)}` : (inv.amount || '—')}</Text>
+                        {inv.remaining > 0 && !isPaid ? (
+                          <Text style={{ fontSize: 9, color: C.red, fontWeight: '700' }}>Due: ₹{numFmt(inv.remaining)}</Text>
+                        ) : null}
+                        <View style={[em.invBadge, { backgroundColor: badgeBg }]}>
+                          <Text style={[em.invBadgeTxt, { color: badgeClr }]}>{payStatus}</Text>
+                        </View>
                       </View>
                     </View>
-                  </View>
-                ))
+                  );
+                })
               )}
             </View>
-            {/* Edit fields */}
+
+            {/* ── Editable fields ── */}
             <View style={em.section}>
               <View style={em.secHead}>
                 <Icon name="tune-vertical" size={14} color={C.red} />
@@ -648,11 +1038,12 @@ function EditOrderModal({ visible, order, onClose, onSaved }) {
                   </Pressable>
                 ))}
               </View>
-              <Text style={em.lbl}>NOTES</Text>
-              <TextInput style={em.notesIn} value={notes} onChangeText={setNotes}
-                placeholder="Add notes or instructions for admin…" placeholderTextColor={C.muted}
+              <Text style={em.lbl}>NOTES / REMARKS</Text>
+              <TextInput style={em.notesIn} value={notes} onChangeText={v => { setNotes(v); setRemarks(v); }}
+                placeholder="Add notes or instructions…" placeholderTextColor={C.muted}
                 multiline numberOfLines={4} textAlignVertical="top" />
             </View>
+
             <View style={{ flexDirection: 'row', gap: 10, margin: 12, marginTop: 4 }}>
               <Pressable style={em.cancelBtn} onPress={onClose}><Text style={em.cancelTxt}>Cancel</Text></Pressable>
               <TouchableOpacity style={[em.saveBtn, saving && em.saveBtnDim]} onPress={save} disabled={saving}>
@@ -666,75 +1057,117 @@ function EditOrderModal({ visible, order, onClose, onSaved }) {
     </Modal>
   );
 }
+
 const em = StyleSheet.create({
-  overlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet:       { backgroundColor: C.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' },
-  hdr:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 18, paddingBottom: 14, backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomWidth: 1, borderBottomColor: C.line },
-  hdrIcon:     { width: 32, height: 32, borderRadius: 9, backgroundColor: '#E3F0FF', alignItems: 'center', justifyContent: 'center' },
-  hdrTitle:    { fontSize: 16, fontWeight: '900', color: C.text },
-  hdrSub:      { fontSize: 11, fontWeight: '700', color: C.muted },
-  closeBtn:    { width: 30, height: 30, borderRadius: 15, backgroundColor: '#F2F2F2', alignItems: 'center', justifyContent: 'center' },
-  banner:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
-  statusBadge: { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
-  statusTxt:   { fontSize: 11, fontWeight: '900', textTransform: 'uppercase' },
-  amtTxt:      { fontSize: 18, fontWeight: '900', color: C.red },
-  section:     { backgroundColor: C.white, borderRadius: 14, marginHorizontal: 12, marginBottom: 10, padding: 14, borderWidth: 1, borderColor: C.line },
-  secHead:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
-  secTitle:    { fontSize: 12, fontWeight: '900', color: C.red, letterSpacing: 0.5, textTransform: 'uppercase' },
-  noInv:       { alignItems: 'center', paddingVertical: 18, gap: 6 },
-  noInvTxt:    { fontSize: 13, color: C.muted, fontWeight: '600' },
-  invRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.line },
-  invLeft:     {},
-  invNo:       { fontSize: 13, fontWeight: '800', color: C.text },
-  invDate:     { fontSize: 11, color: C.muted, marginTop: 2 },
-  invAmt:      { fontSize: 13, fontWeight: '800', color: C.text, textAlign: 'right' },
-  invBadge:    { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, marginTop: 3 },
-  invBadgeTxt: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
-  lbl:         { fontSize: 11, fontWeight: '800', color: C.muted, letterSpacing: 0.5, marginBottom: 6 },
-  chip:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: C.line, backgroundColor: '#F8F8F8' },
-  chipOn:      { backgroundColor: C.red, borderColor: C.red },
-  chipTxt:     { fontSize: 12, fontWeight: '700', color: C.sub },
-  chipTxtOn:   { color: C.white, fontWeight: '900' },
-  notesIn:     { borderWidth: 1.5, borderColor: C.line, borderRadius: 10, padding: 12, fontSize: 14, color: C.text, minHeight: 90, marginBottom: 4 },
-  cancelBtn:   { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1.5, borderColor: C.line, backgroundColor: C.white },
-  cancelTxt:   { fontSize: 14, fontWeight: '700', color: C.sub },
-  saveBtn:     { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.red, borderRadius: 12, paddingVertical: 13 },
-  saveBtnDim:  { backgroundColor: '#B0BEC5' },
-  saveTxt:     { color: C.white, fontSize: 14, fontWeight: '900' },
+  overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  sheet:      { backgroundColor: C.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '92%' },
+  hdr:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 18, paddingBottom: 14, backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomWidth: 1, borderBottomColor: C.line },
+  hdrIcon:    { width: 32, height: 32, borderRadius: 9, backgroundColor: '#E3F0FF', alignItems: 'center', justifyContent: 'center' },
+  hdrTitle:   { fontSize: 16, fontWeight: '900', color: C.text },
+  hdrSub:     { fontSize: 11, fontWeight: '700', color: C.muted },
+  closeBtn:   { width: 30, height: 30, borderRadius: 15, backgroundColor: '#F2F2F2', alignItems: 'center', justifyContent: 'center' },
+  banner:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
+  statusBadge:{ flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
+  statusDot:  { width: 6, height: 6, borderRadius: 3 },
+  statusTxt:  { fontSize: 11, fontWeight: '900', textTransform: 'uppercase' },
+  amtTxt:     { fontSize: 18, fontWeight: '900', color: C.red },
+  section:    { backgroundColor: C.white, borderRadius: 14, marginHorizontal: 12, marginBottom: 10, padding: 14, borderWidth: 1, borderColor: C.line },
+  secHead:    { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+  secTitle:   { fontSize: 12, fontWeight: '900', color: C.red, letterSpacing: 0.5, textTransform: 'uppercase' },
+  infoRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.line },
+  infoLeft:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  infoLbl:    { fontSize: 11, fontWeight: '700', color: C.muted },
+  infoVal:    { fontSize: 12, fontWeight: '700', color: C.text, flexShrink: 1, textAlign: 'right', maxWidth: '55%' },
+  noInv:      { alignItems: 'center', paddingVertical: 18, gap: 6 },
+  noInvTxt:   { fontSize: 12, color: C.muted, fontWeight: '600', textAlign: 'center' },
+  invRow:     { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.line },
+  invNo:      { fontSize: 13, fontWeight: '800', color: C.text },
+  invDate:    { fontSize: 11, color: C.muted, marginTop: 2 },
+  invAmt:     { fontSize: 13, fontWeight: '800', color: C.text },
+  invBadge:   { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, marginTop: 3 },
+  invBadgeTxt:{ fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
+  lbl:        { fontSize: 11, fontWeight: '800', color: C.muted, letterSpacing: 0.5, marginBottom: 6 },
+  chip:       { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: C.line, backgroundColor: '#F8F8F8' },
+  chipOn:     { backgroundColor: C.red, borderColor: C.red },
+  chipTxt:    { fontSize: 12, fontWeight: '700', color: C.sub },
+  chipTxtOn:  { color: C.white, fontWeight: '900' },
+  notesIn:    { borderWidth: 1.5, borderColor: C.line, borderRadius: 10, padding: 12, fontSize: 14, color: C.text, minHeight: 90, marginBottom: 4 },
+  cancelBtn:  { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1.5, borderColor: C.line, backgroundColor: C.white },
+  cancelTxt:  { fontSize: 14, fontWeight: '700', color: C.sub },
+  saveBtn:    { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.red, borderRadius: 12, paddingVertical: 13 },
+  saveBtnDim: { backgroundColor: '#B0BEC5' },
+  saveTxt:    { color: C.white, fontSize: 14, fontWeight: '900' },
 });
 
-// ─── ViewOrderModal ───────────────────────────────────────────────────────────
+// ─── ViewOrderModal — shows order details + invoice count + invoice list ──────
 function ViewOrderModal({ visible, order, onClose }) {
+  const [invoices, setInvoices] = useState([]);
+  const [loadInv,  setLoadInv]  = useState(false);
+
+  useEffect(() => {
+    if (!order || !visible) return;
+    const ordId = order.orderId || order.id || '';
+    if (!ordId || order._isLocal || !apiService) { setInvoices([]); return; }
+
+    // Product name and PO ref for broader search
+    const lineItems = Array.isArray(order.lineItems) && order.lineItems.length > 0
+      ? order.lineItems : (order.items || []);
+    const prodName = lineItems[0]?.name || lineItems[0]?.itemName || '';
+    const poRef    = order.poNumber || order.purchaseOrderRef || '';
+
+    setLoadInv(true);
+
+    const fetches = [
+      // 1. Search by orderId (matches purchaseOrderRef / notes / uniqueId in backend)
+      apiService.get('/invoices', { orderId: ordId, limit: 50 }),
+      // 2. Search by product name inside invoice items.description
+      prodName ? apiService.get('/invoices', { productName: prodName, limit: 50 }) : Promise.resolve({ data: [] }),
+      // 3. Search by PO number reference
+      poRef ? apiService.get('/invoices', { search: poRef, limit: 50 }) : Promise.resolve({ data: [] }),
+    ];
+
+    Promise.all(fetches)
+      .then(results => {
+        const seen = new Set();
+        const merged = [];
+        for (const r of results) {
+          for (const inv of (r?.data || [])) {
+            const key = String(inv.id || inv._id || inv.invoiceNo);
+            if (!seen.has(key)) { seen.add(key); merged.push(inv); }
+          }
+        }
+        merged.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+        setInvoices(merged);
+      })
+      .catch(() => setInvoices([]))
+      .finally(() => setLoadInv(false));
+  }, [order, visible]);
+
   if (!order) return null;
   const items = Array.isArray(order.lineItems) && order.lineItems.length > 0 ? order.lineItems : (order.items || []);
   const st = ST[order.status] || { c: C.muted, bg: '#F2F2F2' };
   const categoryName = items[0]?.category || order._categoryName || order.category || '—';
   const productName  = items[0]?.name || items[0]?.itemName || '—';
-  const companyName  = order._vendorName || order.customer || '—';
-  const packSize     = items[0]?.packSize || order._packSize || items[0]?.unit || '—';
   const skuVal       = items[0]?.sku || '—';
+  const packSize     = items[0]?.packSize || order._packSize || items[0]?.unit || '—';
 
   const infoRows = [
-    { icon: 'receipt',            label: 'Order ID',         val: order.orderId || order.id || '—' },
-    { icon: 'account-outline',    label: 'Customer',         val: order.customer || order.customerName || order._vendorName || '—' },
-    { icon: 'phone-outline',      label: 'Mobile',           val: order.mobile || '—' },
-    { icon: 'email-outline',      label: 'Email',            val: order.email || '—' },
-    { icon: 'tag-outline',        label: 'Category',         val: categoryName },
-    { icon: 'package-variant',    label: 'Product',          val: productName },
-    { icon: 'barcode',            label: 'SKU',              val: skuVal },
-    { icon: 'package-up',         label: 'Pack Size',        val: packSize },
-    { icon: 'calendar-outline',   label: 'Order Date',       val: fmtDate(order.orderDate || order.createdAt) },
-    { icon: 'calendar-check',     label: 'Delivery Date',    val: fmtDate(order.expectedDeliveryDate) },
-    { icon: 'priority-high',      label: 'Priority',         val: order.priority || 'Normal' },
-    { icon: 'cash-multiple',      label: 'Payment Mode',     val: order.paymentMode || '—' },
-    { icon: 'map-marker-outline', label: 'Address',          val: order.address || '—' },
-    { icon: 'city-variant-outline',label: 'City',            val: order.city || '—' },
-    { icon: 'map-outline',        label: 'State',            val: order.state || '—' },
-    { icon: 'mailbox-outline',    label: 'Pincode',          val: order.pincode || '—' },
-    { icon: 'map-marker-radius',  label: 'Full Address',     val: order.deliveryAddress || '—' },
-    { icon: 'pound-box-outline',  label: 'PO Number',        val: order.poNumber || '—' },
-    { icon: 'identifier',         label: 'Reference No.',    val: order.referenceNumber || '—' },
-  ].filter(r => r.val && r.val !== '—');
+    { icon: 'receipt',           label: 'Order ID',     val: order.orderId || order.id || '—' },
+    { icon: 'store-outline',     label: 'Dealer',       val: order.customer || order.customerName || '—' },
+    { icon: 'office-building',   label: 'Company',      val: order.company || order._vendorName || '—' },
+    { icon: 'tag-outline',       label: 'Category',     val: categoryName },
+    { icon: 'package-variant',   label: 'Product',      val: productName },
+    { icon: 'barcode',           label: 'SKU',          val: skuVal },
+    { icon: 'package-up',        label: 'Unit',         val: packSize },
+    { icon: 'counter',           label: 'Quantity',     val: items[0]?.quantity ? String(items[0].quantity) : '—' },
+    { icon: 'currency-inr',      label: 'Unit Price',   val: items[0]?.unitPrice ? `₹${numFmt(items[0].unitPrice)}` : '—' },
+    { icon: 'tag-percentage',    label: 'Discount',     val: items[0]?.discount ? `${items[0].discount}%` : '—' },
+    { icon: 'percent',           label: 'GST',          val: items[0]?.gstPercent ? `${items[0].gstPercent}%` : '—' },
+    { icon: 'file-document-multiple-outline', label: 'Invoices', val: !order._isLocal ? `${invoices.length} invoice${invoices.length !== 1 ? 's' : ''}` : 'Not synced' },
+    { icon: 'cash-multiple',     label: 'Payment Mode', val: order.paymentMode || '—' },
+    { icon: 'calendar-outline',  label: 'Order Date',   val: fmtDate(order.orderDate || order.createdAt) },
+    { icon: 'priority-high',     label: 'Priority',     val: order.priority || 'Normal' },
+  ].filter(r => r.val && r.val !== '—' && r.val !== 'null');
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -748,6 +1181,7 @@ function ViewOrderModal({ visible, order, onClose }) {
             <Pressable onPress={onClose} style={vm.closeBtn}><Icon name="close" size={19} color={C.text} /></Pressable>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
+            {/* Status + Amount */}
             <View style={vm.banner}>
               <View style={[vm.statusBadge, { backgroundColor: st.bg }]}>
                 <Icon name="circle" size={7} color={st.c} />
@@ -758,6 +1192,7 @@ function ViewOrderModal({ visible, order, onClose }) {
                 <Text style={vm.amtVal}>{fmtAmt(order)}</Text>
               </View>
             </View>
+            {/* Financial strip */}
             <View style={vm.finRow}>
               <View style={vm.finItem}><Text style={vm.finLbl}>Sub Total</Text><Text style={vm.finVal}>₹{numFmt(order.subTotal)}</Text></View>
               <View style={vm.finSep} />
@@ -765,6 +1200,7 @@ function ViewOrderModal({ visible, order, onClose }) {
               <View style={vm.finSep} />
               <View style={vm.finItem}><Text style={vm.finLbl}>Total</Text><Text style={[vm.finVal, { color: C.red }]}>₹{numFmt(order.value || 0)}</Text></View>
             </View>
+            {/* Info rows */}
             {infoRows.length > 0 && (
               <View style={vm.card}>
                 {infoRows.map((r, i) => (
@@ -778,32 +1214,78 @@ function ViewOrderModal({ visible, order, onClose }) {
                 ))}
               </View>
             )}
+            {/* Remarks */}
             {(order.remarks || order.notes) ? (
               <View style={vm.remarksBox}>
                 <Text style={vm.remarksLbl}>Remarks / Notes</Text>
                 <Text style={vm.remarksTxt}>{order.remarks || order.notes}</Text>
               </View>
             ) : null}
-            {items.length > 0 && (
-              <View style={vm.card}>
-                <Text style={vm.sectionTitle}>Items in Order ({items.length})</Text>
-                {items.map((it, i) => (
-                  <View key={i} style={[vm.itemRow, i < items.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.line }]}>
-                    <View style={vm.itemIcon}><Icon name="package-variant" size={14} color={C.red} /></View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={vm.itemName}>{it.name || it.itemName || 'Item'}</Text>
-                      <View style={{ flexDirection: 'row', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
-                        <Text style={vm.itemMeta}>Qty: <Text style={vm.itemMetaVal}>{it.quantity || 1}</Text></Text>
-                        <Text style={vm.itemMeta}>Unit: <Text style={vm.itemMetaVal}>₹{numFmt(it.unitPrice)}</Text></Text>
-                        {it.gstPercent > 0 && <Text style={vm.itemMeta}>GST: <Text style={vm.itemMetaVal}>{it.gstPercent}%</Text></Text>}
-                        {(it.packSize || it.unit) ? <Text style={vm.itemMeta}>Pack: <Text style={vm.itemMetaVal}>{it.packSize || it.unit}</Text></Text> : null}
+            {/* ── Invoices section — shows count + full list with product name ── */}
+            <View style={vm.card}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                <Icon name="file-document-multiple-outline" size={14} color={C.red} />
+                <Text style={vm.sectionTitle}>
+                  Invoices {loadInv ? '(loading…)' : `(${invoices.length})`}
+                </Text>
+                {loadInv && <ActivityIndicator size="small" color={C.red} style={{ marginLeft: 4 }} />}
+              </View>
+
+              {/* Product name context */}
+              {productName && productName !== '—' ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#F0F4FF', borderRadius: 7, paddingHorizontal: 9, paddingVertical: 5, marginBottom: 10 }}>
+                  <Icon name="package-variant" size={11} color={C.blue} />
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: C.blue }}>Product: {productName}</Text>
+                </View>
+              ) : null}
+
+              {order._isLocal ? (
+                <View style={vm.noInv}>
+                  <Icon name="cloud-upload-outline" size={26} color={C.line} />
+                  <Text style={vm.noInvTxt}>Order not synced yet — no invoices available</Text>
+                </View>
+              ) : invoices.length === 0 && !loadInv ? (
+                <View style={vm.noInv}>
+                  <Icon name="file-document-remove-outline" size={26} color={C.line} />
+                  <Text style={vm.noInvTxt}>No invoices found for this order/product</Text>
+                </View>
+              ) : (
+                invoices.map((inv, i) => {
+                  const payStatus = inv.status || inv.paymentStatus || 'Pending';
+                  const isPaid    = payStatus === 'Paid';
+                  const isOverdue = payStatus === 'Overdue';
+                  const badgeBg   = isPaid ? C.greenBg : isOverdue ? '#FFF5F5' : C.amberBg;
+                  const badgeClr  = isPaid ? C.green   : isOverdue ? C.red     : C.amber;
+                  const firstInvItem = inv.items && inv.items.length > 0 ? inv.items[0] : null;
+                  return (
+                    <View key={inv.id || inv.invoiceNo || i} style={[vm.invRow, i === invoices.length - 1 && { borderBottomWidth: 0 }]}>
+                      <View style={vm.invIcon}><Icon name="file-document-outline" size={14} color={C.blue} /></View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={vm.invNo}>{inv.invoiceNo || inv.invoiceNumber || `INV-${i + 1}`}</Text>
+                        {firstInvItem?.description ? (
+                          <Text style={{ fontSize: 10, color: C.blue, fontWeight: '600', marginTop: 1 }} numberOfLines={1}>
+                            {firstInvItem.description}{inv.items?.length > 1 ? ` +${inv.items.length - 1} more` : ''}
+                          </Text>
+                        ) : null}
+                        <Text style={vm.invDate}>{inv.date || fmtDate(inv.createdAt)}</Text>
+                        {inv.orderNo ? (
+                          <Text style={{ fontSize: 9, color: C.muted, fontWeight: '600' }}>PO: {inv.orderNo}</Text>
+                        ) : null}
+                      </View>
+                      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                        <Text style={vm.invAmt}>{inv.grandTotal ? `₹${numFmt(inv.grandTotal)}` : (inv.amount || '—')}</Text>
+                        {inv.remaining > 0 && !isPaid ? (
+                          <Text style={{ fontSize: 9, color: C.red, fontWeight: '700' }}>Due: ₹{numFmt(inv.remaining)}</Text>
+                        ) : null}
+                        <View style={[vm.invBadge, { backgroundColor: badgeBg }]}>
+                          <Text style={[vm.invBadgeTxt, { color: badgeClr }]}>{payStatus}</Text>
+                        </View>
                       </View>
                     </View>
-                    <Text style={vm.itemTotal}>₹{numFmt(it.total)}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
+                  );
+                })
+              )}
+            </View>
             <View style={{ height: 20 }} />
           </ScrollView>
         </View>
@@ -838,21 +1320,63 @@ const vm = StyleSheet.create({
   remarksBox:  { backgroundColor: C.white, marginHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: C.line, padding: 14, marginBottom: 10 },
   remarksLbl:  { fontSize: 11, fontWeight: '800', color: C.muted, marginBottom: 6 },
   remarksTxt:  { fontSize: 13, color: C.text, lineHeight: 20 },
-  sectionTitle:{ fontSize: 12, fontWeight: '900', color: C.red, letterSpacing: 0.5, marginBottom: 10 },
-  itemRow:     { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 10, gap: 10 },
-  itemIcon:    { width: 28, height: 28, borderRadius: 7, backgroundColor: '#FFF0F0', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
-  itemName:    { fontSize: 13, fontWeight: '800', color: C.text },
-  itemMeta:    { fontSize: 10, color: C.muted, fontWeight: '600' },
-  itemMetaVal: { color: C.text, fontWeight: '700' },
-  itemTotal:   { fontSize: 13, fontWeight: '900', color: C.red, marginTop: 1 },
+  sectionTitle:{ fontSize: 12, fontWeight: '900', color: C.red, letterSpacing: 0.5 },
+  noInv:       { alignItems: 'center', paddingVertical: 16, gap: 6 },
+  noInvTxt:    { fontSize: 12, color: C.muted, fontWeight: '600', textAlign: 'center' },
+  invRow:      { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.line, gap: 10 },
+  invIcon:     { width: 28, height: 28, borderRadius: 7, backgroundColor: C.blueBg, alignItems: 'center', justifyContent: 'center' },
+  invNo:       { fontSize: 13, fontWeight: '800', color: C.text },
+  invDate:     { fontSize: 11, color: C.muted, marginTop: 1 },
+  invAmt:      { fontSize: 13, fontWeight: '800', color: C.text },
+  invBadge:    { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  invBadgeTxt: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
 });
+
+// ─── InvoiceCountInline — shows invoice count as small badge inside card ─────
+// Accepts full order object so it can search by orderId + productName + poNumber
+function InvoiceCountInline({ order }) {
+  const [count, setCount] = useState(null);
+  useEffect(() => {
+    if (!order || !apiService) return;
+    const orderId = !order._isLocal ? (order.orderId || order.id || '') : '';
+    if (!orderId) return;
+    const lineItems = Array.isArray(order.lineItems) && order.lineItems.length > 0
+      ? order.lineItems : (order.items || []);
+    const prodName = lineItems[0]?.name || lineItems[0]?.itemName || '';
+
+    const fetches = [
+      apiService.get('/invoices', { orderId, limit: 50 }),
+      prodName ? apiService.get('/invoices', { productName: prodName, limit: 50 }) : Promise.resolve({ data: [] }),
+    ];
+    Promise.all(fetches)
+      .then(results => {
+        const seen = new Set();
+        let total = 0;
+        for (const r of results) {
+          for (const inv of (r?.data || [])) {
+            const key = String(inv.id || inv._id || inv.invoiceNo);
+            if (!seen.has(key)) { seen.add(key); total++; }
+          }
+        }
+        setCount(total);
+      })
+      .catch(() => setCount(null));
+  }, [order]);
+  if (!count) return null;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: C.blueBg, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3 }}>
+      <Icon name="file-document-outline" size={10} color={C.blue} />
+      <Text style={{ fontSize: 10, fontWeight: '800', color: C.blue }}>{count} inv</Text>
+    </View>
+  );
+}
 
 // ─── InvoiceCountBadge — small badge on View button showing invoice count ────
 function InvoiceCountBadge({ orderId }) {
   const [count, setCount] = useState(null);
   useEffect(() => {
     if (!orderId || !apiService) return;
-    apiService.get('/invoices', { search: orderId, limit: 1 })
+    apiService.get('/invoices', { orderId, limit: 50 })
       .then(r => setCount(r?.total ?? r?.data?.length ?? null))
       .catch(() => setCount(null));
   }, [orderId]);
@@ -868,136 +1392,194 @@ const icb = StyleSheet.create({
   txt:   { color: C.white, fontSize: 9, fontWeight: '900' },
 });
 
-// ─── OrderCard — icon-only action buttons, tooltip on tap ─────────────────────
-function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onPrint, onDownloadPdf }) {
+// ─── OrderCard — 5 action buttons: Track, Place Order, View, Edit, PDF ───────
+function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onDownloadPdf }) {
   const st       = ST[order.status] || { c: C.muted, bg: '#F2F2F2' };
   const canEdit  = EDITABLE.includes(order.status);
   const canPlace = PLACEABLE.includes(order.status);
   const orderId  = order.orderId || order.id || '—';
-  const isERP    = (order.source || '').toUpperCase() === 'ERP';
   const items    = Array.isArray(order.lineItems) && order.lineItems.length > 0 ? order.lineItems : (order.items || []);
-  const firstName = items[0]?.name || items[0]?.itemName || null;
-  const firstCat  = items[0]?.category || order._categoryName || null;
+  const firstItem = items[0];
   const totalAmt  = order.value || order.totalAmount;
 
   return (
     <View style={oc.card}>
-      {/* Header: order ID + date + status */}
-      <View style={oc.head}>
-        <View style={{ flex: 1, marginRight: 10 }}>
+      {/* ── Top: Order ID + Status ── */}
+      <View style={oc.topRow}>
+        <View style={{ flex: 1 }}>
           <View style={oc.idRow}>
-            <Icon name="receipt" size={12} color={C.muted} />
-            <Text style={oc.idTxt}>{orderId}</Text>
-            <View style={oc.srcChip}>
-              <Icon name={isERP ? 'desktop-classic' : 'cellphone'} size={9} color={C.muted} />
-              <Text style={oc.srcTxt}>{isERP ? 'ERP' : 'App'}</Text>
-            </View>
+            <Icon name="receipt" size={13} color={C.red} />
+            <Text style={oc.idTxt} numberOfLines={1}>{orderId}</Text>
+            {order._isLocal && (
+              <View style={oc.localChip}>
+                <Text style={oc.localTxt}>LOCAL</Text>
+              </View>
+            )}
           </View>
-          <View style={oc.datRow}>
-            <Icon name="calendar-outline" size={10} color={C.muted} />
-            <Text style={oc.datTxt}>{fmtDate(order.createdAt || order.orderDate)}</Text>
-          </View>
+          <Text style={oc.dateTxt}>
+            <Icon name="calendar-outline" size={10} color={C.muted} /> {fmtDate(order.createdAt || order.orderDate)}
+          </Text>
         </View>
-        <View style={[oc.badge, { backgroundColor: st.bg }]}>
-          <Text style={[oc.badgeTxt, { color: st.c }]}>{order.status || 'Unknown'}</Text>
+        <View style={[oc.statusBadge, { backgroundColor: st.bg }]}>
+          <View style={[oc.statusDot, { backgroundColor: st.c }]} />
+          <Text style={[oc.statusTxt, { color: st.c }]}>{order.status || 'Unknown'}</Text>
         </View>
       </View>
 
+      {/* ── Dealer name + mobile ── */}
+      {(order.customer || order.customerName) ? (
+        <View style={oc.dealerRow}>
+          <Icon name="store-outline" size={12} color={C.blue} />
+          <Text style={oc.dealerName} numberOfLines={1}>{order.customer || order.customerName}</Text>
+          {order.mobile ? (
+            <>
+              <Text style={oc.dealerSep}>·</Text>
+              <Icon name="phone-outline" size={11} color={C.muted} />
+              <Text style={oc.dealerMobile}>{order.mobile}</Text>
+            </>
+          ) : null}
+        </View>
+      ) : null}
+
       <View style={oc.div} />
 
-      {/* Product info — only if real data exists */}
-      {(firstName || firstCat || totalAmt) && (
-        <View style={oc.product}>
-          <View style={oc.productIcon}><Icon name="package-variant" size={18} color={C.red} /></View>
-          <View style={{ flex: 1 }}>
-            {firstName ? <Text style={oc.productName} numberOfLines={1}>{firstName}</Text> : null}
-            {firstCat  ? <Text style={oc.productCat}>{firstCat}</Text> : null}
-            {items.length > 1 && <Text style={oc.productCnt}>+{items.length - 1} more item{items.length - 1 !== 1 ? 's' : ''}</Text>}
+      {/* ── Product info ── */}
+      {firstItem && (
+        <View style={oc.productRow}>
+          <View style={oc.productIcon}>
+            <Icon name="package-variant" size={16} color={C.red} />
           </View>
-          {totalAmt !== undefined && totalAmt !== null && (
-            <View style={oc.amtBox}>
-              <Text style={oc.amt}>₹{numFmt(totalAmt)}</Text>
-              <Text style={oc.amtLbl}>Total</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={oc.productName} numberOfLines={1}>{firstItem.name || '—'}</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
+              {firstItem.category ? (
+                <Text style={oc.metaTag}>
+                  <Icon name="tag-outline" size={9} color={C.muted} /> {firstItem.category}
+                </Text>
+              ) : null}
+              {firstItem.quantity ? (
+                <Text style={oc.metaTag}>Qty: {firstItem.quantity} {firstItem.packSize || ''}</Text>
+              ) : null}
+              {firstItem.sku ? (
+                <Text style={oc.metaTag}>SKU: {firstItem.sku}</Text>
+              ) : null}
+              {firstItem.unitPrice > 0 ? (
+                <Text style={[oc.metaTag, { color: C.amber, fontWeight: '700' }]}>
+                  ₹{numFmt(firstItem.unitPrice)}/unit
+                </Text>
+              ) : null}
+            </View>
+          </View>
+          <View style={{ alignItems: 'flex-end', gap: 4 }}>
+            {totalAmt != null && (
+              <View style={oc.amtBox}>
+                <Text style={oc.amt}>₹{numFmt(totalAmt)}</Text>
+                <Text style={oc.amtLbl}>Total</Text>
+              </View>
+            )}
+            {/* Invoice count badge */}
+            <InvoiceCountInline order={order} />
+          </View>
+        </View>
+      )}
+
+      {/* ── Financial summary chips ── */}
+      {(order.subTotal > 0 || order.totalGst > 0) && (
+        <View style={oc.finChips}>
+          {order.subTotal > 0 && (
+            <View style={oc.finChip}>
+              <Text style={oc.finChipLbl}>Sub</Text>
+              <Text style={oc.finChipVal}>₹{numFmt(order.subTotal)}</Text>
+            </View>
+          )}
+          {order.totalGst > 0 && (
+            <View style={oc.finChip}>
+              <Text style={oc.finChipLbl}>GST</Text>
+              <Text style={oc.finChipVal}>₹{numFmt(order.totalGst)}</Text>
+            </View>
+          )}
+          {order.paymentMode ? (
+            <View style={[oc.finChip, { backgroundColor: C.greenBg }]}>
+              <Icon name="cash" size={9} color={C.green} />
+              <Text style={[oc.finChipVal, { color: C.green }]}>{order.paymentMode}</Text>
+            </View>
+          ) : null}
+          {order.priority && order.priority !== 'Normal' && (
+            <View style={[oc.finChip, { backgroundColor: order.priority === 'Urgent' ? '#FFF5F5' : C.amberBg }]}>
+              <Icon name="flag" size={9} color={order.priority === 'Urgent' ? C.red : C.amber} />
+              <Text style={[oc.finChipVal, { color: order.priority === 'Urgent' ? C.red : C.amber }]}>{order.priority}</Text>
             </View>
           )}
         </View>
       )}
 
-      {/* Priority chip — only if non-Normal */}
-      {order.priority && order.priority !== 'Normal' && (
-        <View style={oc.metaRow}>
-          <View style={[oc.metaChip, { backgroundColor: order.priority === 'Urgent' ? '#FFF5F5' : '#FEF3E2' }]}>
-            <Icon name="flag" size={9} color={order.priority === 'Urgent' ? C.red : C.amber} />
-            <Text style={[oc.metaTxt, { color: order.priority === 'Urgent' ? C.red : C.amber }]}>{order.priority}</Text>
-          </View>
-        </View>
-      )}
-
-      {/* ── Action row: icon buttons only, tooltip on tap ── */}
+      {/* ── Action buttons: text labels, no icons ── */}
       <View style={oc.actRow}>
-        {/* Track Order */}
-        <IconBtn icon="truck-fast-outline" label="Track" bg={C.red} onPress={() => onTrack && onTrack(orderId, order)} />
-
-        {/* Place Order */}
-        <IconBtn icon="send-circle-outline" label={canPlace ? 'Place' : 'Submitted'} bg={C.green}
-          disabled={!canPlace} onPress={() => canPlace && onPlaceOrder && onPlaceOrder(order)} />
-
-        {/* View — with invoice count badge */}
-        <View style={{ position: 'relative' }}>
-          <IconBtn icon="eye-outline" label="View" bg={C.blueBg} color={C.blue}
-            onPress={() => onView && onView(order)} />
-          <InvoiceCountBadge orderId={orderId} />
-        </View>
-
-        {/* Edit */}
-        <IconBtn icon="pencil-outline" label="Edit" bg={canEdit ? '#1565C0' : '#B0BEC5'}
-          disabled={!canEdit} onPress={() => canEdit && onEdit && onEdit(order)} />
-
-        {/* Delete */}
-        <IconBtn icon="trash-can-outline" label="Delete" bg="#C62828"
-          onPress={() => onDelete && onDelete(orderId, order)} />
-
-        {/* Print */}
-        <IconBtn icon="printer-outline" label="Print" bg="#37474F"
-          onPress={() => onPrint && onPrint(order)} />
-
-        {/* Download PDF */}
-        <IconBtn icon="file-pdf-box" label="PDF" bg="#2E7D32"
-          onPress={() => onDownloadPdf && onDownloadPdf(order)} />
+        <Pressable style={[oc.actBtn, { backgroundColor: '#5B21B6' }]}
+          onPress={() => onTrack && onTrack(orderId, order)}>
+          <Icon name="map-marker-path" size={12} color={C.white} />
+          <Text style={oc.actTxt}>Track</Text>
+        </Pressable>
+        <Pressable style={[oc.actBtn, { backgroundColor: canPlace ? C.green : '#B0BEC5' }]}
+          onPress={() => canPlace && onPlaceOrder && onPlaceOrder(order)}
+          disabled={!canPlace}>
+          <Text style={oc.actTxt}>{canPlace ? 'Place Order' : 'Submitted'}</Text>
+        </Pressable>
+        <Pressable style={[oc.actBtn, { backgroundColor: C.blue }]}
+          onPress={() => onView && onView(order)}>
+          <Text style={oc.actTxt}>View</Text>
+        </Pressable>
+        <Pressable style={[oc.actBtn, { backgroundColor: canEdit ? '#1565C0' : '#B0BEC5' }]}
+          onPress={() => canEdit && onEdit && onEdit(order)}
+          disabled={!canEdit}>
+          <Text style={oc.actTxt}>Edit</Text>
+        </Pressable>
+        <Pressable style={[oc.actBtn, { backgroundColor: '#2E7D32' }]}
+          onPress={() => onDownloadPdf && onDownloadPdf(order)}>
+          <Text style={oc.actTxt}>PDF</Text>
+        </Pressable>
       </View>
     </View>
   );
 }
 
 const oc = StyleSheet.create({
-  card:       { backgroundColor: C.white, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 14, marginBottom: 12, ...sh },
-  head:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
-  idRow:      { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
-  idTxt:      { fontSize: 14, fontWeight: '900', color: C.text },
-  srcChip:    { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#F1F3F5', borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2 },
-  srcTxt:     { fontSize: 9, fontWeight: '700', color: C.muted },
-  datRow:     { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  datTxt:     { fontSize: 11, fontWeight: '600', color: C.muted },
-  badge:      { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, flexShrink: 0 },
-  badgeTxt:   { fontSize: 9, fontWeight: '900', textTransform: 'uppercase' },
-  div:        { height: 1, backgroundColor: C.line, marginBottom: 10 },
-  product:    { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#F8F9FA', borderRadius: 10, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: '#EEEEEE' },
-  productIcon:{ width: 34, height: 34, borderRadius: 8, backgroundColor: 'rgba(197,31,43,0.08)', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  productName:{ fontSize: 13, fontWeight: '800', color: C.text, marginBottom: 1 },
-  productCat: { fontSize: 10, fontWeight: '600', color: C.muted, marginBottom: 2 },
-  productCnt: { fontSize: 10, fontWeight: '600', color: C.sub },
-  amtBox:     { alignItems: 'flex-end', marginLeft: 8 },
-  amt:        { fontSize: 14, fontWeight: '900', color: C.red },
-  amtLbl:     { fontSize: 9, fontWeight: '700', color: C.muted, marginTop: 2 },
-  metaRow:    { flexDirection: 'row', gap: 6, marginBottom: 8, flexWrap: 'wrap' },
-  metaChip:   { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
-  metaTxt:    { fontSize: 10, fontWeight: '700' },
-  // Action row — spread icons evenly
-  actRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.line },
+  card:        { backgroundColor: C.white, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 14, marginBottom: 12, ...sh },
+  topRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
+  idRow:       { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
+  idTxt:       { fontSize: 13, fontWeight: '900', color: C.text, flex: 1 },
+  localChip:   { backgroundColor: C.amberBg, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
+  localTxt:    { fontSize: 8, fontWeight: '900', color: C.amber },
+  dateTxt:     { fontSize: 10, color: C.muted, fontWeight: '600', marginLeft: 1 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, flexShrink: 0 },
+  statusDot:   { width: 6, height: 6, borderRadius: 3 },
+  statusTxt:   { fontSize: 9, fontWeight: '900', textTransform: 'uppercase' },
+  dealerRow:   { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10, backgroundColor: '#F0F4FF', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  dealerName:  { fontSize: 12, fontWeight: '800', color: C.blue, flex: 1 },
+  dealerSep:   { color: C.muted, fontSize: 12 },
+  dealerMobile:{ fontSize: 11, fontWeight: '600', color: C.muted },
+  div:         { height: 1, backgroundColor: C.line, marginBottom: 10 },
+  productRow:  { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#F8F9FA', borderRadius: 10, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: '#EEEEE0' },
+  productIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(197,31,43,0.08)', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  productName: { fontSize: 13, fontWeight: '800', color: C.text },
+  metaTag:     { fontSize: 10, color: C.muted, fontWeight: '600' },
+  amtBox:      { alignItems: 'flex-end', marginLeft: 8 },
+  amt:         { fontSize: 15, fontWeight: '900', color: C.red },
+  amtLbl:      { fontSize: 9, fontWeight: '700', color: C.muted, marginTop: 1 },
+  finChips:    { flexDirection: 'row', gap: 6, marginBottom: 10, flexWrap: 'wrap' },
+  finChip:     { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F3F4F6', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
+  finChipLbl:  { fontSize: 9, color: C.muted, fontWeight: '700' },
+  finChipVal:  { fontSize: 10, fontWeight: '800', color: C.text },
+  metaRow:     { flexDirection: 'row', gap: 6, marginBottom: 8, flexWrap: 'wrap' },
+  metaChip:    { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
+  metaTxt:     { fontSize: 10, fontWeight: '700' },
+  actRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.line, gap: 6, flexWrap: 'wrap' },
+  actBtn:      { flex: 1, minWidth: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 8 },
+  actTxt:      { color: C.white, fontSize: 10, fontWeight: '800', textAlign: 'center' },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
-export default function OrderManagementSection({ onBack, onNavigateToDispatch, onPlaceOrder, initialOrders }) {
+export default function OrderManagementSection({ onBack, onNavigateToDispatch, onPlaceOrder, onViewInvoice, dealer, initialOrders }) {
   const [orders,       setOrders]       = useState(Array.isArray(initialOrders) ? initialOrders : []);
   const [loading,      setLoading]      = useState(true);
   const [refreshing,   setRefreshing]   = useState(false);
@@ -1007,42 +1589,112 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
   const [editOrder,    setEditOrder]    = useState(null);
   const [viewOrder,    setViewOrder]    = useState(null);
 
+  // ── Persist orders to AsyncStorage so they survive reload ────────────────
+  const persistOrders = useCallback(async (list) => {
+    if (!AsyncStorage) return;
+    try {
+      // Only persist local orders (backend orders reload from API)
+      const localOrders = list.filter(o => o._isLocal);
+      await AsyncStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(localOrders));
+    } catch (_) {}
+  }, []);
+
+  // ── Load persisted local orders on mount ─────────────────────────────────
+  useEffect(() => {
+    if (!AsyncStorage) return;
+    AsyncStorage.getItem(ORDERS_STORAGE_KEY)
+      .then(raw => {
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        if (Array.isArray(saved) && saved.length > 0) {
+          setOrders(prev => {
+            const existing = new Set(prev.map(o => o.orderId || o.id).filter(Boolean));
+            const toAdd = saved.filter(o => !existing.has(o.orderId || o.id));
+            return [...toAdd, ...prev];
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Derived: filter orders locally by search + active status tab
+  const filteredOrders = React.useMemo(() => {
+    let list = orders;
+    if (activeFilter !== 'All') {
+      list = list.filter(o => o.status === activeFilter);
+    }
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(o =>
+        (o.orderId || o.id || '').toLowerCase().includes(q) ||
+        (o.customer || o.customerName || '').toLowerCase().includes(q) ||
+        (o._categoryName || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [orders, activeFilter, search]);
+
   const fetchOrders = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       if (!apiService) { setLoading(false); setRefreshing(false); return; }
       const res = await apiService.get('/orders', {
         ...(activeFilter !== 'All' && { status: activeFilter }),
-        ...(search.trim() && { search: search.trim() }),
         limit: 100,
       });
       if (res?.success) {
-        // Only keep orders created through the Dealer App (not ERP orders)
         const fetched = (res.data || []).filter(o => !o.source || o.source === 'DealerApp');
         setOrders(prev => {
-          // Keep any locally-created orders not yet returned by the API
           const apiIds = new Set(fetched.map(o => o.orderId || o.id).filter(Boolean));
+          // Keep local orders that haven't been confirmed by API yet
           const localOnly = prev.filter(o => o._isLocal && !apiIds.has(o.orderId || o.id));
-          // Merge: local-only at top, then API results — deduplicated
           const seen = new Set();
           const merged = [];
           for (const o of [...localOnly, ...fetched]) {
             const key = o.orderId || o.id;
             if (!key || !seen.has(key)) { seen.add(key); merged.push(o); }
           }
+          // Persist local orders so they survive reload
+          persistOrders(merged);
           return merged;
         });
       }
-      // silently ignore API errors — local orders remain visible
     } catch (_err) {
-      // API unreachable — local orders still show
+      // API unreachable — local orders remain visible from AsyncStorage
     } finally { setLoading(false); setRefreshing(false); }
-  }, [activeFilter, search]);
+  }, [activeFilter, persistOrders]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
   const onRefresh = () => { setRefreshing(true); fetchOrders(true); };
 
-  const handleTrack  = (orderId) => { if (onNavigateToDispatch) onNavigateToDispatch(orderId); };
+  const handleTrack = (orderId, order) => {
+    if (onNavigateToDispatch) {
+      // Pass null to open Dispatch Tracking in list mode (all orders view)
+      onNavigateToDispatch(null, null);
+    } else {
+      Alert.alert(
+        `Order Status: ${order?.status || 'Unknown'}`,
+        `Order ID: ${orderId}\nDate: ${fmtDate(order?.createdAt || order?.orderDate)}\nAmount: ${fmtAmt(order || {})}`,
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const handlePlaceOrder = (order) => {
+    if (onPlaceOrder) {
+      onPlaceOrder(order);
+    } else {
+      Alert.alert('Navigation Error', 'Place Order page is not available.');
+    }
+  };
+
+  const handleViewInvoice = (order) => {
+    if (onViewInvoice) {
+      onViewInvoice(order);
+    } else {
+      Alert.alert('Invoices', `Viewing invoices for order ${order?.orderId || order?.id || '—'}`);
+    }
+  };
 
   const handleDelete = (orderId, order) => {
     Alert.alert('Delete Order', `Delete order ${orderId}?\nThis cannot be undone.`, [
@@ -1050,27 +1702,33 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          // Remove from local state immediately
-          setOrders(prev => prev.filter(o => (o.orderId || o.id) !== orderId));
-          // Also delete from backend if not a local-only order
+          setOrders(prev => {
+            const next = prev.filter(o => (o.orderId || o.id) !== orderId);
+            persistOrders(next);
+            return next;
+          });
           if (apiService && !order?._isLocal) {
             try {
               const id = resolveId(order);
               await apiService.delete(`/orders/${id}`);
-            } catch (_) { /* ignore backend errors for delete */ }
+            } catch (_) {}
           }
         },
       },
     ]);
   };
 
-  const handleEditSaved = updated => {
-    setOrders(prev => prev.map(o =>
-      (o.orderId || o.id) === (updated.orderId || updated.id) ? { ...o, ...updated } : o
-    ));
+  const handleEditSaved = (updated) => {
+    setOrders(prev => {
+      const next = prev.map(o =>
+        (o.orderId || o.id) === (updated.orderId || updated.id) ? { ...o, ...updated } : o
+      );
+      persistOrders(next);
+      return next;
+    });
   };
 
-  const handleCreated = newOrder => {
+  const handleCreated = (newOrder) => {
     if (!newOrder) return;
     const shaped = {
       mongodbId:            newOrder.mongodbId  || newOrder._id || newOrder.id,
@@ -1080,6 +1738,7 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
       customerName:         newOrder.customerName || newOrder.customer || '',
       mobile:               newOrder.mobile     || '',
       email:                newOrder.email      || '',
+      company:              newOrder.company    || '',
       status:               newOrder.status     || 'Order Placed',
       source:               'DealerApp',
       priority:             newOrder.priority   || 'Normal',
@@ -1103,24 +1762,17 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
       lineItems:            newOrder.lineItems  || newOrder.items || [],
       items:                newOrder.items      || newOrder.lineItems || [],
       _categoryName:        newOrder._categoryName || (newOrder.lineItems?.[0]?.category) || '',
-      _vendorName:          newOrder._vendorName   || newOrder.customer || newOrder.customerName || '',
+      _vendorName:          newOrder._vendorName   || newOrder.customer || '',
       _packSize:            newOrder._packSize     || '',
-      _isLocal:             true,
+      _isLocal:             newOrder._isLocal ?? true,
     };
-    setOrders(prev => [shaped, ...prev]);
+    setOrders(prev => {
+      const next = [shaped, ...prev];
+      persistOrders(next);
+      return next;
+    });
   };
 
-  // Place Order — navigate to PlaceOrderPage with this order's data pre-loaded
-  // The actual API submission happens there, not here
-  const handlePlaceOrder = order => {
-    if (onPlaceOrder) {
-      onPlaceOrder(order);
-    } else {
-      Alert.alert('Navigation Error', 'Place Order page is not available.');
-    }
-  };
-
-  const handlePrint = o => Alert.alert('Print', `Printing order ${o.orderId || o.id}…`);
   const handleDownloadPdf = o => Alert.alert('Download PDF', `PDF for ${o.orderId || o.id} will be saved to your device.`);
 
   return (
@@ -1141,9 +1793,9 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
       {/* ── Search ── */}
       <View style={pg.searchWrap}>
         <Icon name="magnify" size={18} color={C.muted} />
-        <TextInput style={pg.searchIn} placeholder="Search by order ID…"
+        <TextInput style={pg.searchIn} placeholder="Search by order ID, customer…"
           placeholderTextColor={C.muted} value={search} onChangeText={setSearch}
-          returnKeyType="search" onSubmitEditing={() => fetchOrders()} />
+          returnKeyType="search" />
         {search.length > 0 && (
           <Pressable onPress={() => setSearch('')}>
             <Icon name="close-circle" size={17} color={C.muted} />
@@ -1154,7 +1806,7 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
       {/* ── Filter chips ── */}
       <View style={pg.filterBar}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={pg.filterRow}>
-          {ALL_STATUSES.map(f => (
+          {QUICK_FILTERS.map(f => (
             <Pressable key={f} onPress={() => setActiveFilter(f)} style={[pg.filterChip, activeFilter === f && pg.filterChipOn]}>
               <Text style={[pg.filterTxt, activeFilter === f && pg.filterTxtOn]}>{f}</Text>
             </Pressable>
@@ -1174,11 +1826,11 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[C.red]} tintColor={C.red} />}>
 
           <Text style={pg.countTxt}>
-            {orders.length} order{orders.length !== 1 ? 's' : ''}
+            {filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''}
             {activeFilter !== 'All' ? `  ·  ${activeFilter}` : ''}
           </Text>
 
-          {orders.length === 0 ? (
+          {filteredOrders.length === 0 ? (
             <View style={pg.empty}>
               <Icon name="package-variant-closed" size={60} color={C.line} />
               <Text style={pg.emptyTitle}>No Orders Yet</Text>
@@ -1191,16 +1843,15 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
               </Text>
             </View>
           ) : (
-            orders.map(order => (
+            filteredOrders.map(order => (
               <OrderCard
                 key={order.mongodbId || order._id || order.orderId || order.id}
                 order={order}
                 onTrack={handleTrack}
                 onEdit={o => setEditOrder(o)}
                 onDelete={handleDelete}
-                onView={o => setViewOrder(o)}
                 onPlaceOrder={handlePlaceOrder}
-                onPrint={handlePrint}
+                onView={o => setViewOrder(o)}
                 onDownloadPdf={handleDownloadPdf}
               />
             ))
@@ -1211,7 +1862,7 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
       )}
 
       {/* ── Modals ── */}
-      <CreateOrderModal visible={showCreate} onClose={() => setShowCreate(false)} onCreated={handleCreated} />
+      <CreateOrderModal visible={showCreate} onClose={() => setShowCreate(false)} onCreated={handleCreated} dealer={dealer} />
       <EditOrderModal visible={!!editOrder} order={editOrder} onClose={() => setEditOrder(null)} onSaved={handleEditSaved} />
       <ViewOrderModal visible={!!viewOrder} order={viewOrder} onClose={() => setViewOrder(null)} />
     </SafeAreaView>

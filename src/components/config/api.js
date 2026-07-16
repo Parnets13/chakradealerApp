@@ -9,10 +9,10 @@ const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !=
 // ────────────────────────────────────────────────────────────────
 // OPTION 1: LOCAL BACKEND (For Development)
 // ────────────────────────────────────────────────────────────────
-// Use your computer's actual IP address: 192.168.1.21
+// Use your computer's actual IP address: 192.168.1.9
 // Find your IP: Run "ipconfig" on Windows, "ifconfig" on Mac/Linux
 // NOTE: Backend runs on PORT 5000 (see chakraIndustries-backend/.env)
-const LOCAL_BACKEND_URL = 'http://192.168.1.25:5000/api/dealer';
+const LOCAL_BACKEND_URL = 'http://192.168.1.9:5000/api/dealer';
 
 // ────────────────────────────────────────────────────────────────
 // OPTION 2: PRODUCTION BACKEND (Always works)

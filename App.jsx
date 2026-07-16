@@ -8,6 +8,8 @@ import SplashScreen from './src/components/SplashScreen';
 import DealerRegistrationScreen from './src/components/DealerRegistrationScreen';
 import AuthScreens from './src/components/AuthScreens';
 import DealerDashboard from './src/components/DealerDashboard';
+import apiService from './src/components/services/apiService';
+import dealerService from './src/components/services/dealerService';
 
 const Stack = createNativeStackNavigator();
 
@@ -191,8 +193,11 @@ function App() {
                 {() => (
                   <DealerDashboard 
                     dealer={dealerData || regFormData}
-                    onLogout={() => {
+                    onLogout={async () => {
                       console.log('🚪 Logging out...');
+                      // Clear stored auth data
+                      await apiService.removeToken().catch(() => {});
+                      await dealerService.clearLocalProfile().catch(() => {});
                       setDealerData(null);
                       setRegFormData(null);
                       setStage(APP_STAGE.AUTH);

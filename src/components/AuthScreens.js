@@ -179,76 +179,10 @@ function LoginScreen({mobile, setMobile, onOtpSent, onGoToRegister, registeredNa
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
           contentContainerStyle={{flexGrow: 1}}>
 
-<<<<<<< HEAD
-          {/* ── Hero ── */}
+          {/* ── Hero Banner ── */}
           <HeroBanner>
             <View style={s.heroColumn}>
-              {/* Row 1 — back arrow top-left */}
-              {onGoToRegister ? (
-                <View style={s.heroArrowRow}>
-                  <Pressable onPress={onGoToRegister} style={s.heroRegisterBtn} hitSlop={12}>
-                    <SvgIcon d={IC.back} size={18} color="#FFF" sw={2.2} />
-                  </Pressable>
-                </View>
-=======
-          {/* ── Banner ── */}
-          <Animated.View style={[s.banner, {opacity: bannerO, transform: [{translateY: bannerY}]}]}>
-            <PinkDots />
-            <Image
-              source={require('./assets/sri-chakra-logo.png')}
-              style={s.bannerImg}
-              resizeMode="cover"
-            />
-            <BannerWave height={40} />
-          </Animated.View>
-
-          {/* ── Welcome heading ── */}
-          <Animated.View style={[s.headingWrap, {opacity: headingO, transform: [{translateY: headingY}]}]}>
-            <Text style={s.heading}>Welcome Back! 👋</Text>
-            <Text style={s.subheading}>Login to your Sri Chakra dealer account</Text>
-          </Animated.View>
-
-          {/* ── Login card ── */}
-          <Animated.View style={[s.card, {opacity: cardO, transform: [{translateY: cardY}]}]}>
-            {/* Mobile input */}
-            <Text style={s.label}>Mobile Number</Text>
-            <View style={[s.inputRow, mobile.length === 10 && s.inputRowActive]}>
-              <View style={s.phoneIconWrap}>
-                <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-                  <Path
-                    d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24 11.4 11.4 0 0 0 3.58.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1.01l-2.2 2.21z"
-                    stroke={RED} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"
-                  />
-                </Svg>
-              </View>
-              <View style={s.dialCode}>
-                <Text style={s.dialCodeText}>+91 ▾</Text>
-              </View>
-              <View style={s.dividerLine} />
-              <TextInput
-                keyboardType="number-pad"
-                maxLength={10}
-                value={mobile}
-                onChangeText={v => setMobile(v.replace(/\D/g, ''))}
-                placeholder="Enter mobile number"
-                placeholderTextColor="#BDBDBD"
-                style={s.textInput}
-              />
-            </View>
-
-            {/* Send OTP button */}
-            <Pressable
-              onPress={handleSubmit}
-              disabled={!canSubmit || loading}
-              style={[s.redBtn, (!canSubmit || loading) && s.redBtnDisabled]}>
-              {loading ? (
-                <ActivityIndicator color="#FFF" size="small" />
->>>>>>> d07ba22f8620b81be0ad63e36392e252e8cda204
-              ) : (
-                <View style={s.heroArrowRow} />
-              )}
-
-              {/* Row 2 — welcome text left · logo right */}
+              <View style={s.heroArrowRow} />
               <View style={s.heroTopRow}>
                 <View style={s.heroLeftBlock}>
                   <Text style={s.heroGreeting}>Welcome Dealer 👋</Text>

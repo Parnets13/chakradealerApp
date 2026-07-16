@@ -9,6 +9,7 @@ import {
   Animated,
   Dimensions,
   Easing,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -275,71 +276,103 @@ const mS = StyleSheet.create({
 /* ═══════════════════════════════════════════════════════════
    MAIN EXPORT
 ═══════════════════════════════════════════════════════════ */
+
+// ── Map every API field returned by GET /api/dealer/profile to form state ──
+// Backend profile route returns:
+//   _id, name, mobile, email, address, city, state, pincode,
+//   dealerCode, zone, status, photo, isActive, isVerified,
+//   creditLimit, createdAt
+function mapDealerToForm(d) {
+  if (!d || typeof d !== 'object') {
+    return {
+      name: '', phone: '', dealerCode: '', email: '',
+      address: '', city: '', state: '', pincode: '',
+      zone: '', status: '', createdAt: '',
+    };
+  }
+  return {
+    name:       String(d.name       || d.dealerName || ''),
+    phone:      String(d.mobile     || d.phone      || ''),
+    dealerCode: String(d.dealerCode || d.code       || ''),
+    email:      String(d.email      || ''),
+    address:    String(d.address    || ''),
+    city:       String(d.city       || ''),
+    state:      String(d.state      || ''),
+    pincode:    String(d.pincode    || ''),
+    zone:       String(d.zone       || ''),
+    status:     String(d.status     || ''),
+    createdAt:  d.createdAt
+      ? new Date(d.createdAt).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})
+      : '',
+  };
+}
+
+const _EMPTY_FORM = mapDealerToForm(null); // kept for reference
+
 export default function ProfilePage({dealer: dealerProp, onLogout, onBack, onNavigate}) {
-  const [pwdModal,    setPwdModal]    = useState(false);
-  const [profileData, setProfileData] = useState(null);
-  const [loading,     setLoading]     = useState(true);
-  const [form,        setForm]        = useState({
-    name:'', phone:'', dealerCode:'',
-    email:'', address:'', city:'', state:'', pincode:'',
-  });
+  const [pwdModal, setPwdModal] = useState(false);
+  const [loading,  setLoading]  = useState(true);
 
-  useEffect(() => { loadProfile(); }, []);
+  // form holds all display values — seeded immediately from dealerProp, refreshed from API
+  const [form,     setForm]     = useState(() => mapDealerToForm(dealerProp));
+  // photoUri is kept separate because it may be a long base64 string
+  const [photoUri, setPhotoUri] = useState(
+    () => dealerProp?.photo || dealerProp?.profilePhoto || dealerProp?.image || null
+  );
 
-  /* ── Fetch profile from API ── */
-  const loadProfile = async () => {
-    try {
-      setLoading(true);
-      // Try /profile endpoint first (returns full registration data)
-      const res = await dealerService.getProfile();
-      if (res.success && res.data) {
-        setProfileData(res.data);
-        populateForm(res.data);
-      } else if (res.dealer) {
-        setProfileData(res.dealer);
-        populateForm(res.dealer);
-      } else {
-        // Fallback: use dealer prop passed from login
-        setProfileData(dealerProp || {});
-        populateForm(dealerProp || {});
-      }
-    } catch (err) {
-      console.warn('Profile API failed, using dealerProp:', err.message);
-      setProfileData(dealerProp || {});
-      populateForm(dealerProp || {});
-    } finally {
-      setLoading(false);
+  // apply a dealer object from any source (prop or API) into state
+  const applyDealer = React.useCallback((d) => {
+    if (!d) return;
+    setForm(mapDealerToForm(d));
+    setPhotoUri(d.photo || d.profilePhoto || d.image || null);
+  }, []);
+
+  // When dealerProp arrives / changes (parent re-renders after login), apply it
+  // but only if we haven't yet received a fresher API response
+  const hasApiData = React.useRef(false);
+  useEffect(() => {
+    if (dealerProp && !hasApiData.current) {
+      applyDealer(dealerProp);
     }
-  };
+  }, [dealerProp, applyDealer]);
 
-  const populateForm = (d = {}) => {
-    setForm({
-      name:       d.name       || d.dealerName || '',
-      phone:      d.mobile     || d.phone      || '',
-      dealerCode: d.dealerCode || d.code       || '',
-      email:      d.email      || '',
-      address:    d.address    || '',
-      city:       d.city       || '',
-      state:      d.state      || '',
-      pincode:    d.pincode    || '',
-    });
-  };
+  // Fetch the logged-in dealer's profile from the backend using the saved token
+  useEffect(() => {
+    let cancelled = false;
+    const fetchProfile = async () => {
+      try {
+        setLoading(true);
+        const res = await dealerService.getProfile();
+        if (cancelled) return;
+        // Backend getDealerProfile returns { success: true, data: publicDealer(dealer) }
+        const data = res?.data || res?.dealer || null;
+        if (res?.success && data) {
+          hasApiData.current = true;
+          applyDealer(data);
+        }
+        // if API returns nothing useful, dealerProp is already in state — no action needed
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('[ProfilePage] getProfile failed, using cached data:', err.message);
+        }
+        // AsyncStorage fallback is handled inside dealerService.getProfile()
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchProfile();
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Derived display values ── */
-  const d          = profileData || dealerProp || {};
-  const name       = d.name       || d.dealerName  || '';
-  const mobile     = d.mobile     || d.phone       || '';
-  const dealerCode = d.dealerCode || d.code        || '';
-  const photoUri   = d.photo      || d.profilePhoto || d.image || null;
-  const joinDate   = d.createdAt
-    ? new Date(d.createdAt).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})
-    : '';
-  const initials   = name.trim()
-    ? name.trim().split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase()
+  // Derived values for header display
+  const name     = form.name  || '';
+  const mobile   = form.phone || '';
+  const initials = name.trim()
+    ? name.trim().split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
     : 'D';
 
-  /* ── Loading state ── */
-  if (loading) {
+  // Only show full-screen spinner when we truly have zero data
+  if (loading && !name && !mobile) {
     return (
       <SafeAreaView style={[pS.screen, {justifyContent:'center', alignItems:'center'}]} edges={['bottom']}>
         <StatusBar barStyle="light-content" backgroundColor="#C94455"/>
@@ -397,11 +430,11 @@ export default function ProfilePage({dealer: dealerProp, onLogout, onBack, onNav
             <Text style={pS.cardTitle}>Personal Details</Text>
           </View>
           <View style={pS.formWrap}>
-            <FormField label="Dealer Name"   value={form.name}       placeholder="—" />
-            <FormField label="Phone Number"  value={form.phone}      placeholder="—" keyboardType="phone-pad"/>
-            <FormField label="Dealer Code"   value={form.dealerCode} placeholder="Assigned by admin"/>
-            <FormField label="Email ID"      value={form.email}      placeholder="—" keyboardType="email-address"/>
-            <FormField label="Address"       value={form.address}    placeholder="—" />
+            <FormField label="Dealer Name"    value={form.name}       placeholder="—" />
+            <FormField label="Mobile Number"  value={form.phone}      placeholder="—" keyboardType="phone-pad"/>
+            <FormField label="Dealer Code"    value={form.dealerCode} placeholder="Assigned by admin"/>
+            <FormField label="Email ID"       value={form.email}      placeholder="—" keyboardType="email-address"/>
+            <FormField label="Address"        value={form.address}    placeholder="—" />
             <View style={pS.twoCol}>
               <View style={{flex:1, marginRight:8}}>
                 <FormField label="City"  value={form.city}  placeholder="—" last/>
@@ -410,7 +443,10 @@ export default function ProfilePage({dealer: dealerProp, onLogout, onBack, onNav
                 <FormField label="State" value={form.state} placeholder="—" last/>
               </View>
             </View>
-            <FormField label="Pincode" value={form.pincode} placeholder="—" keyboardType="number-pad" last/>
+            <FormField label="Zone"       value={form.zone}      placeholder="—" />
+            <FormField label="Pincode"    value={form.pincode}   placeholder="—" keyboardType="number-pad"/>
+            <FormField label="Status"     value={form.status}    placeholder="—" />
+            <FormField label="Registered" value={form.createdAt} placeholder="—" last/>
           </View>
         </View>
 

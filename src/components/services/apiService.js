@@ -41,13 +41,23 @@ class ApiService {
 
     const isFormData = options.body instanceof FormData;
 
+    // Build headers — NEVER manually set Content-Type for FormData.
+    // React Native's fetch auto-sets multipart/form-data with the correct boundary.
+    // Passing it manually strips the boundary → backend cannot parse fields.
+    const baseHeaders = isFormData
+      ? {}
+      : { 'Content-Type': 'application/json' };
+
+    // Merge extra headers but always strip Content-Type when body is FormData
+    const extraHeaders = { ...(options.headers || {}) };
+    if (isFormData) delete extraHeaders['Content-Type'];
+
     const config = {
       method: options.method || 'GET',
       headers: {
-        // Don't set Content-Type for FormData — let the browser set multipart boundary
-        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...baseHeaders,
         ...(token && { Authorization: `Bearer ${token}` }),
-        ...options.headers,
+        ...extraHeaders,
       },
       // FormData must NOT be JSON-stringified
       ...(options.body && { body: isFormData ? options.body : JSON.stringify(options.body) }),
@@ -57,8 +67,19 @@ class ApiService {
     
     console.log('═══════════════════════════════════════════════════════════');
     console.log(`🌐 API Request: ${config.method} ${fullURL}`);
-    if (options.body) {
-      console.log('📤 Body:', JSON.stringify(options.body, null, 2));
+    if (options.body && !(options.body instanceof FormData)) {
+      // Skip logging large base64 fields to prevent Metro/logcat freezing
+      const logBody = {};
+      Object.entries(options.body).forEach(([k, v]) => {
+        if (typeof v === 'string' && v.length > 200) {
+          logBody[k] = `[${v.substring(0, 30)}... (${v.length} chars)]`;
+        } else {
+          logBody[k] = v;
+        }
+      });
+      console.log('📤 Body:', JSON.stringify(logBody, null, 2));
+    } else if (options.body instanceof FormData) {
+      console.log('📤 Body: [FormData]');
     }
     console.log('═══════════════════════════════════════════════════════════');
 

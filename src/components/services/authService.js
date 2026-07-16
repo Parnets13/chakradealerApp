@@ -2,12 +2,46 @@ import apiService from './apiService';
 import { API_ENDPOINTS } from '../config/api';
 
 class AuthService {
+  // Register new dealer with photo (multipart/form-data)
+  async registerDealerFormData(formData) {
+    try {
+      console.log('📋 Registering dealer (with photo / FormData)');
+      const response = await apiService.request('/auth/register', {
+        method: 'POST',
+        body: formData, // FormData — apiService auto-sets correct Content-Type
+      });
+      console.log('✅ Register (FormData) Response:', response);
+      if (response.success && response.dealer) {
+        try {
+          const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+          await AsyncStorage.setItem('dealerProfile', JSON.stringify(response.dealer));
+        } catch (storageErr) {
+          console.warn('⚠ Could not save reg dealer data:', storageErr.message);
+        }
+      }
+      return response;
+    } catch (error) {
+      console.error('❌ Register (FormData) Error:', error);
+      throw error;
+    }
+  }
+
   // Register new dealer
   async registerDealer(data) {
     try {
       console.log('📋 Registering dealer:', data.mobile);
       const response = await apiService.post(API_ENDPOINTS.AUTH.REGISTER, data);
       console.log('✅ Register Response:', response);
+      // Save dealer data from registration response so profile is pre-populated before login
+      if (response.success && response.dealer) {
+        try {
+          const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+          await AsyncStorage.setItem('dealerProfile', JSON.stringify(response.dealer));
+          console.log('✅ Registration dealer data saved to AsyncStorage');
+        } catch (storageErr) {
+          console.warn('⚠ Could not save reg dealer data to storage:', storageErr.message);
+        }
+      }
       return response;
     } catch (error) {
       console.error('❌ Register Error:', error);
@@ -47,6 +81,16 @@ class AuthService {
       if (response.success && response.token) {
         await apiService.setToken(response.token);
         console.log('✅ Token saved successfully');
+      }
+      // Persist dealer data locally so profile screen always has it
+      if (response.success && response.dealer) {
+        try {
+          const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+          await AsyncStorage.setItem('dealerProfile', JSON.stringify(response.dealer));
+          console.log('✅ Dealer profile saved to AsyncStorage');
+        } catch (storageErr) {
+          console.warn('⚠ Could not save dealer profile to storage:', storageErr.message);
+        }
       }
       return response;
     } catch (error) {

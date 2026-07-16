@@ -28,9 +28,8 @@ import SupportPage from './SupportPage';
 import NotificationsPage from './NotificationsPage';
 import CategoryPage from './CategoryPage';
 import InvoicesPage from './InvoicesPage';
-import PlaceOrderPage from './PlaceOrderPage';
-
 import DealerLedgerPage from './DealerLedgerPage';
+import OrderHistoryPage from './OrderHistoryPage';
 
 // ─── Design Tokens — Sri Chakra Industries Brand ─────────────────────────────
 const C = {
@@ -74,10 +73,9 @@ const NAV_ITEMS = [
 function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange, dealer}) {
   const [activeTab, setActiveTab] = useState('home');
   const [activePage, setActivePage] = useState(externalActivePage || 'home');
-  // Order ID to highlight when navigating from My Orders → Dispatch & Tracking
-  const [dispatchOrderId, setDispatchOrderId] = useState(null);
-  // Order data to send to PlaceOrderPage when dealer clicks Place Order from My Orders
-  const [placeOrderData, setPlaceOrderData] = useState(null);
+  // Order ID + full order data to pass to Dispatch & Tracking from My Orders
+  const [dispatchOrderId,   setDispatchOrderId]   = useState(null);
+  const [dispatchOrderData, setDispatchOrderData] = useState(null);
 
   React.useEffect(() => {
     if (externalActivePage) {
@@ -94,16 +92,10 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
     if (NAV_ITEMS.map(n => n.id).includes(page)) setActiveTab(page);
   };
 
-  // Called from OrdersPage "Place Order" button — navigate to PlaceOrderPage with that order pre-loaded
-  const handlePlaceOrderFromMyOrders = (order) => {
-    setPlaceOrderData(order || null);
-    setActivePage('placeorder');
-    if (onPageChange) onPageChange('placeorder');
-  };
-
   // Called from OrdersPage "Track Order" button — go to dispatch page with that order highlighted
-  const handleTrackOrder = (orderId) => {
+  const handleTrackOrder = (orderId, order) => {
     setDispatchOrderId(orderId || null);
+    setDispatchOrderData(order || null);
     setActivePage('dispatch');
     setActiveTab('dispatch');
     if (onPageChange) onPageChange('dispatch');
@@ -117,11 +109,10 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
       <SafeAreaView style={styles.screen} edges={['top']}>
         <StatusBar barStyle="light-content" backgroundColor={C.primary} />
         <View style={styles.subPageContainer}>
-          {activePage === 'orders'        && <OrdersPage onBack={handleBackToHome} onNavigateToDispatch={handleTrackOrder} onPlaceOrder={handlePlaceOrderFromMyOrders} dealer={dealer} />}
-          {activePage === 'orderhistory'  && <OrdersPage onBack={handleBackToHome} onNavigateToDispatch={handleTrackOrder} onPlaceOrder={handlePlaceOrderFromMyOrders} dealer={dealer} />}
+          {activePage === 'orders'        && <OrdersPage onBack={handleBackToHome} onNavigateToDispatch={handleTrackOrder} onViewInvoice={() => handleNavigate('invoices')} dealer={dealer} />}
+          {activePage === 'orderhistory'  && <OrderHistoryPage onBack={handleBackToHome} onNavigateToDispatch={handleTrackOrder} />}
           {activePage === 'inventory'     && <InventoryPage onBack={handleBackToHome} />}
-          {activePage === 'stock'         && <InventoryPage onBack={handleBackToHome} />}
-          {activePage === 'dispatch'      && <DispatchTrackingPage onBack={() => { setDispatchOrderId(null); handleBackToHome(); }} initialOrderId={dispatchOrderId} />}
+          {activePage === 'dispatch'      && <DispatchTrackingPage onBack={() => { setDispatchOrderId(null); setDispatchOrderData(null); handleBackToHome(); }} initialOrderId={dispatchOrderId} initialOrder={dispatchOrderData} />}
           {activePage === 'profile'       && <ProfilePage dealer={dealer} onLogout={onLogout} onBack={handleBackToHome} onNavigate={handleNavigate} />}
           {activePage === 'ledger'        && <DealerLedgerPage onBack={handleBackToHome} />}
           {activePage === 'returns'       && <ReturnsPage onBack={handleBackToHome} />}
@@ -132,15 +123,14 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
           {activePage === 'cart'          && <CartScreen onBack={() => handleNavigate('category')} onCheckout={(cart, grand, sub, gst) => { setCartData({ cart, grand, sub, gst }); handleNavigate('checkout'); }} />}
           {activePage === 'checkout'      && cartData && <CheckoutScreen cart={cartData.cart} grandTotal={cartData.grand} subTotal={cartData.sub} totalGst={cartData.gst} onBack={(target) => handleNavigate(target || 'cart')} onOrderSuccess={() => handleNavigate('orders')} onOrderFail={() => {}} />}
           {activePage === 'invoices'      && <InvoicesPage onBack={handleBackToHome} />}
-<<<<<<< HEAD
-          {activePage === 'placeorder'    && <PlaceOrderPage onBack={handleBackToHome} initialOrder={placeOrderData} onOrderPlaced={() => { setPlaceOrderData(null); handleNavigate('orders'); }} onNavigateToDispatch={handleTrackOrder} />}
-          {activePage === 'receipts'      && <DealerReceiptsPage onBack={handleBackToHome} />}
-=======
-          {activePage === 'placeorder'    && <PlaceOrderPage onBack={handleBackToHome} onOrderPlaced={() => handleNavigate('orders')} />}
-          
->>>>>>> d07ba22f8620b81be0ad63e36392e252e8cda204
+
         </View>
         <BottomNavigation activeTab={activeTab} onChange={tab => {
+          // Track tab directly tapped → clear any "from My Orders" order so List Mode shows
+          if (tab === 'dispatch') {
+            setDispatchOrderId(null);
+            setDispatchOrderData(null);
+          }
           setActiveTab(tab);
           handleNavigate(tab);
         }} />
@@ -218,25 +208,13 @@ function HomePage({onNavigate}) {
     );
   }
 
-  // ── Quick Actions (6 items) ──
+  // ── Quick Actions ──
   const quickActions = [
-<<<<<<< HEAD
-    {id: 'neworder',     label: 'New Order',    icon: 'clipboard-plus',         nav: 'orderhistory', color: C.primary,     bg: C.primaryLight},
-    {id: 'tracking',     label: 'Track Order',  icon: 'truck-delivery',         nav: 'dispatch',     color: C.info,        bg: C.infoLight},
-    {id: 'placeorders',  label: 'Place Orders', icon: 'send-circle-outline',    nav: 'placeorder',   color: C.success,     bg: C.successLight},
-    {id: 'invoices',     label: 'Invoice',      icon: 'file-document',          nav: 'invoices',     color: C.primaryDark, bg: C.primaryLight},
-    {id: 'ledger',       label: 'Payment',      icon: 'cash-multiple',          nav: 'ledger',       color: C.warning,     bg: C.warningLight},
-    {id: 'returns',      label: 'Returns',      icon: 'package-variant',        nav: 'returns',      color: C.purple,      bg: C.purpleLight},
-=======
-    {id: 'placeorder', label: 'Place Order',   icon: 'cart-plus',        nav: 'placeorder', color: C.primary,  bg: C.primaryLight},
-    {id: 'orders',     label: 'My Orders',     icon: 'clipboard-list',   nav: 'orders',     color: C.success,  bg: C.successLight},
-    {id: 'category',   label: 'Categories',    icon: 'view-grid',        nav: 'category',   color: C.purple,   bg: C.purpleLight},
-    {id: 'Stock',      label: 'Stock',         icon: 'package-variant',  nav: 'stock',  color: C.teal,     bg: C.tealLight},
-    {id: 'tracking',   label: 'Track Orders',  icon: 'truck-delivery',   nav: 'dispatch',   color: C.info,     bg: C.infoLight},
-    {id: 'ledger',     label: 'Ledger',        icon: 'book-open-variant',nav: 'ledger',     color: C.warning,  bg: C.warningLight},
-    {id: 'invoices',   label: 'Invoices',      icon: 'file-document',    nav: 'invoices',   color: C.primaryDark, bg: C.primaryLight},
-    
->>>>>>> d07ba22f8620b81be0ad63e36392e252e8cda204
+    {id: 'orders',        label: 'My Orders',      icon: 'clipboard-list',    nav: 'orders',        color: C.success,     bg: C.successLight},
+    {id: 'orderhistory',  label: 'Order History',  icon: 'history',           nav: 'orderhistory',  color: C.purple,      bg: C.purpleLight},
+    {id: 'tracking',      label: 'Track Orders',   icon: 'truck-delivery',    nav: 'dispatch',      color: C.info,        bg: C.infoLight},
+    {id: 'ledger',        label: 'Ledger',         icon: 'book-open-variant', nav: 'ledger',        color: C.warning,     bg: C.warningLight},
+    {id: 'returns',       label: 'Returns',        icon: 'package-variant',   nav: 'returns',       color: C.teal,        bg: C.tealLight},
   ];
 
   return (
@@ -297,7 +275,7 @@ function HomePage({onNavigate}) {
       ══════════════════════════════════════════ */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
-        {/* Row 1 — Place Order + Track Order */}
+        {/* Row 1 — My Orders + Order History (wide, side by side) */}
         <View style={styles.qaRow}>
           {quickActions.slice(0, 2).map(item => (
             <Pressable
@@ -311,9 +289,9 @@ function HomePage({onNavigate}) {
             </Pressable>
           ))}
         </View>
-        {/* Row 2 — Order History + Invoice + Payment + Returns */}
+        {/* Row 2 — Track Orders, Ledger, Returns */}
         <View style={styles.qaRow}>
-          {quickActions.slice(2, 6).map(item => (
+          {quickActions.slice(2, 5).map(item => (
             <Pressable
               key={item.id}
               style={styles.qaItem}
