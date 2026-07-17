@@ -285,25 +285,18 @@ const mS = StyleSheet.create({
 function mapDealerToForm(d) {
   if (!d || typeof d !== 'object') {
     return {
-      name: '', phone: '', dealerCode: '', email: '',
+      name: '', phone: '', email: '',
       address: '', city: '', state: '', pincode: '',
-      zone: '', status: '', createdAt: '',
     };
   }
   return {
     name:       String(d.name       || d.dealerName || ''),
     phone:      String(d.mobile     || d.phone      || ''),
-    dealerCode: String(d.dealerCode || d.code       || ''),
     email:      String(d.email      || ''),
     address:    String(d.address    || ''),
     city:       String(d.city       || ''),
     state:      String(d.state      || ''),
     pincode:    String(d.pincode    || ''),
-    zone:       String(d.zone       || ''),
-    status:     String(d.status     || ''),
-    createdAt:  d.createdAt
-      ? new Date(d.createdAt).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})
-      : '',
   };
 }
 
@@ -432,7 +425,6 @@ export default function ProfilePage({dealer: dealerProp, onLogout, onBack, onNav
           <View style={pS.formWrap}>
             <FormField label="Dealer Name"    value={form.name}       placeholder="—" />
             <FormField label="Mobile Number"  value={form.phone}      placeholder="—" keyboardType="phone-pad"/>
-            <FormField label="Dealer Code"    value={form.dealerCode} placeholder="Assigned by admin"/>
             <FormField label="Email ID"       value={form.email}      placeholder="—" keyboardType="email-address"/>
             <FormField label="Address"        value={form.address}    placeholder="—" />
             <View style={pS.twoCol}>
@@ -443,10 +435,7 @@ export default function ProfilePage({dealer: dealerProp, onLogout, onBack, onNav
                 <FormField label="State" value={form.state} placeholder="—" last/>
               </View>
             </View>
-            <FormField label="Zone"       value={form.zone}      placeholder="—" />
-            <FormField label="Pincode"    value={form.pincode}   placeholder="—" keyboardType="number-pad"/>
-            <FormField label="Status"     value={form.status}    placeholder="—" />
-            <FormField label="Registered" value={form.createdAt} placeholder="—" last/>
+            <FormField label="Pincode"    value={form.pincode}   placeholder="—" keyboardType="number-pad" last/>
           </View>
         </View>
 

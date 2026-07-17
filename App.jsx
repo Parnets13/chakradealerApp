@@ -6,6 +6,7 @@ import {createNativeStackNavigator} from '@react-navigation/native-stack';
 
 import SplashScreen from './src/components/SplashScreen';
 import DealerRegistrationScreen from './src/components/DealerRegistrationScreen';
+import RegistrationOtpScreen from './src/components/RegistrationOtpScreen';
 import AuthScreens from './src/components/AuthScreens';
 import DealerDashboard from './src/components/DealerDashboard';
 import apiService from './src/components/services/apiService';
@@ -16,6 +17,7 @@ const Stack = createNativeStackNavigator();
 const APP_STAGE = {
   SPLASH: 'splash',
   REGISTRATION: 'registration',
+  REG_OTP: 'reg_otp',      // OTP verification right after registration
   AUTH: 'auth',
   DASHBOARD: 'dashboard',
 };
@@ -91,6 +93,25 @@ function App() {
     const backHandler = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
+        if (stage === APP_STAGE.REGISTRATION) {
+          // On registration screen, show exit confirmation
+          Alert.alert(
+            'Exit App',
+            'Do you want to exit?',
+            [
+              {
+                text: 'Cancel',
+                style: 'cancel',
+              },
+              {
+                text: 'Exit',
+                onPress: () => BackHandler.exitApp(),
+              },
+            ],
+            {cancelable: false}
+          );
+          return true;
+        }
         if (stage === APP_STAGE.AUTH) {
           // On login screen, back goes to registration
           setStage(APP_STAGE.REGISTRATION);
@@ -200,7 +221,7 @@ function App() {
                       await dealerService.clearLocalProfile().catch(() => {});
                       setDealerData(null);
                       setRegFormData(null);
-                      setStage(APP_STAGE.AUTH);
+                      setStage(APP_STAGE.REGISTRATION);
                     }}
                     activePage={dashboardPage}
                     onPageChange={setDashboardPage}
