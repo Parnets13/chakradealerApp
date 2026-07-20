@@ -102,9 +102,9 @@ function FormField({label, value, placeholder, keyboardType, last}) {
       <Text style={ffS.label}>{label}</Text>
       <View style={[ffS.inputRow, ffS.inputReadOnly]}>
         <TextInput
-          style={[ffS.input, {color: GREY}]}
+          style={[ffS.input, {color: DARK}]}
           value={value}
-          placeholder={placeholder || `—`}
+          placeholder={placeholder || ""}
           placeholderTextColor="#C0C0C0"
           keyboardType={keyboardType || 'default'}
           editable={false}
@@ -283,20 +283,33 @@ const mS = StyleSheet.create({
 //   dealerCode, zone, status, photo, isActive, isVerified,
 //   creditLimit, createdAt
 function mapDealerToForm(d) {
+  // Helper function to get value or empty string
+  const getValue = (val) => {
+    if (val === null || val === undefined) return '';
+    const strVal = String(val).trim();
+    return strVal;
+  };
+
   if (!d || typeof d !== 'object') {
     return {
       name: '', phone: '', email: '',
       address: '', city: '', state: '', pincode: '',
+      gstin: '', panNumber: '', zone: 'Not Assigned', creditLimit: 0, outstandingAmount: 0,
     };
   }
   return {
-    name:       String(d.name       || d.dealerName || ''),
-    phone:      String(d.mobile     || d.phone      || ''),
-    email:      String(d.email      || ''),
-    address:    String(d.address    || ''),
-    city:       String(d.city       || ''),
-    state:      String(d.state      || ''),
-    pincode:    String(d.pincode    || ''),
+    name:               getValue(d.name || d.dealerName),
+    phone:              getValue(d.mobile || d.phone),
+    email:              getValue(d.email),
+    address:            getValue(d.address),
+    city:               getValue(d.city),
+    state:              getValue(d.state),
+    pincode:            getValue(d.pincode),
+    gstin:              getValue(d.gstin || d.gstNumber),
+    panNumber:          getValue(d.panNumber),
+    zone:               getValue(d.zone) || 'Not Assigned',
+    creditLimit:        Number(d.creditLimit) || 0,
+    outstandingAmount:  Number(d.outstandingAmount) || 0,
   };
 }
 
@@ -435,7 +448,18 @@ export default function ProfilePage({dealer: dealerProp, onLogout, onBack, onNav
                 <FormField label="State" value={form.state} placeholder="—" last/>
               </View>
             </View>
-            <FormField label="Pincode"    value={form.pincode}   placeholder="—" keyboardType="number-pad" last/>
+            <FormField label="Pincode"    value={form.pincode}   placeholder="—" keyboardType="number-pad"/>
+            <FormField label="GST Number" value={form.gstin}     placeholder="—" />
+            <FormField label="PAN Number" value={form.panNumber} placeholder="—" />
+            <FormField label="Zone"       value={form.zone}      placeholder="—" />
+            <View style={pS.twoCol}>
+              <View style={{flex:1, marginRight:8}}>
+                <FormField label="Credit Limit"  value={`₹${(form.creditLimit || 0).toLocaleString('en-IN')}`}     placeholder="—" last/>
+              </View>
+              <View style={{flex:1}}>
+                <FormField label="Outstanding"   value={`₹${(form.outstandingAmount || 0).toLocaleString('en-IN')}`} placeholder="—" last/>
+              </View>
+            </View>
           </View>
         </View>
 

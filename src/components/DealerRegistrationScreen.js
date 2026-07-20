@@ -3,6 +3,7 @@
  * - No tick icons on fields
  * - Success shown as auto-closing popup (2s) then redirect to login
  * - Re-registration logic: pending/approved/rejected handled properly
+ * - Added: GST Number, PAN Number, Credit Limit, Outstanding Amount, Zone
  */
 
 import React, {useEffect, useRef, useState} from 'react';
@@ -46,6 +47,10 @@ const IC = {
   pin:      'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zM12 11.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z',
   check:    'M9 12l2 2 4-4',
   shield:   'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+  gst:      'M9 14l2 2 4-4M7 21h10a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2z',
+  pan:      'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 0 0 3-3V8a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3z',
+  credit:   'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
+  zone:     'M17.657 16.657L13.414 20.9a1.998 1.998 0 0 1-2.827 0l-4.244-4.243a8 8 0 1 1 11.314 0zM15 11a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
 };
 
 function SvgIco({d, size = 18, color = GREY, sw = 1.8}) {
@@ -94,14 +99,12 @@ function WaveHeader() {
         </Svg>
       </View>
       <Animated.View style={[s.headerContent, {opacity:contentO, transform:[{translateY:contentY},{scale:logoScale}]}]}>
-        {/* Left — welcome + title text */}
         <View style={s.headerLeft}>
           <Text style={s.headerGreeting}>Welcome 👋</Text>
           <Text style={s.headerTitle}>Dealer Registration</Text>
           <View style={s.headerDivider}/>
           <Text style={s.headerSub}>Sri Chakra Industries</Text>
         </View>
-        {/* Right — logo in white rounded card */}
         <View style={s.headerLogoCard}>
           <Image source={require('./assets/sri-chakra-logo.png')} style={s.headerLogo} resizeMode="contain"/>
         </View>
@@ -110,7 +113,7 @@ function WaveHeader() {
   );
 }
 
-/* ── Field — no tick icon ── */
+/* ── Field — same style as original, no tick icon ── */
 function Field({label, value, onChange, placeholder, keyboard, maxLen, icon, error, optional, noCapitalize, hint}) {
   const [focused, setFocused] = useState(false);
   return (
@@ -139,7 +142,18 @@ function Field({label, value, onChange, placeholder, keyboard, maxLen, icon, err
         />
       </View>
       {!!hint  && !error && <Text style={s.fhint}>{hint}</Text>}
-      {!!error && <Text style={s.ferr}>● {error}</Text>}
+      {!!error && <Text style={s.ferr}>⚠ {error}</Text>}
+    </View>
+  );
+}
+
+/* ── Section divider label ── */
+function SectionLabel({title}) {
+  return (
+    <View style={s.secLabelWrap}>
+      <View style={s.secLabelLine}/>
+      <Text style={s.secLabelTxt}>{title}</Text>
+      <View style={s.secLabelLine}/>
     </View>
   );
 }
@@ -152,15 +166,11 @@ function SuccessPopup({visible, onDone}) {
 
   useEffect(() => {
     if (!visible) return;
-
-    // Fade + scale IN
     Animated.parallel([
       Animated.timing(overlayOp, {toValue:1, duration:250, useNativeDriver:true}),
       Animated.timing(opacity,   {toValue:1, duration:300, easing:Easing.out(Easing.quad), useNativeDriver:true}),
       Animated.spring(scale,     {toValue:1, friction:7, tension:60, useNativeDriver:true}),
     ]).start();
-
-    // After 2s → fade OUT then redirect
     const timer = setTimeout(() => {
       Animated.parallel([
         Animated.timing(overlayOp, {toValue:0, duration:350, useNativeDriver:true}),
@@ -168,7 +178,6 @@ function SuccessPopup({visible, onDone}) {
         Animated.timing(scale,     {toValue:0.90, duration:300, useNativeDriver:true}),
       ]).start(() => onDone());
     }, 2000);
-
     return () => clearTimeout(timer);
   }, [visible, opacity, scale, overlayOp, onDone]);
 
@@ -176,37 +185,41 @@ function SuccessPopup({visible, onDone}) {
     <Modal visible={visible} transparent animationType="none" statusBarTranslucent>
       <Animated.View style={[s.popOverlay, {opacity: overlayOp}]}>
         <Animated.View style={[s.popBox, {opacity, transform:[{scale}]}]}>
-
-          {/* Green circle checkmark */}
           <View style={s.popCircle}>
             <SvgIco d={IC.check} size={38} color="#FFF" sw={3.2}/>
           </View>
-
           <Text style={s.popTitle}>Registration Successful! 🎉</Text>
-
           <Text style={s.popMsg}>
             Dealer Registration Completed Successfully.
           </Text>
-
-          {/* Redirecting indicator */}
           <View style={s.popRedirectRow}>
             <ActivityIndicator size="small" color="#9CA3AF"/>
             <Text style={s.popRedirectT}>  Redirecting to login…</Text>
           </View>
-
         </Animated.View>
       </Animated.View>
     </Modal>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════════
    MAIN SCREEN
-═══════════════════════════════════════════════════════════ */
+════════════════════════════════════════════════════════════ */
 export default function DealerRegistrationScreen({onGoToLogin}) {
   const [form, setForm] = useState({
-    dealerName:'', mobile:'', email:'',
-    address:'', city:'', state:'', pincode:'',
+    dealerName:    '',
+    mobile:        '',
+    email:         '',
+    address:       '',
+    city:          '',
+    state:         '',
+    pincode:       '',
+    // ── New fields ──
+    gstNumber:     '',
+    panNumber:     '',
+    creditLimit:   '',
+    outstandingAmount: '',
+    zone:          '',
   });
   const [photo,     setPhoto]     = useState(null);
   const [errors,    setErrors]    = useState({});
@@ -235,6 +248,12 @@ export default function DealerRegistrationScreen({onGoToLogin}) {
     if (!form.city.trim())         e.city       = 'City is required';
     if (!form.state.trim())        e.state      = 'State is required';
     if (form.pincode.length !== 6) e.pincode    = 'Enter valid 6-digit pincode';
+    // GST — optional but if entered must be valid 15-char format
+    if (form.gstNumber.trim() && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(form.gstNumber.trim().toUpperCase()))
+                                   e.gstNumber  = 'Enter valid 15-digit GST number';
+    // PAN — optional but if entered must be valid 10-char format
+    if (form.panNumber.trim() && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(form.panNumber.trim().toUpperCase()))
+                                   e.panNumber  = 'Enter valid PAN (e.g. ABCDE1234F)';
     return e;
   };
 
@@ -248,13 +267,19 @@ export default function DealerRegistrationScreen({onGoToLogin}) {
     setLoading(true);
     try {
       const payload = {
-        name:    form.dealerName.trim(),
-        mobile:  form.mobile.trim(),
-        email:   form.email.trim() || undefined,
-        address: form.address.trim(),
-        city:    form.city.trim(),
-        state:   form.state.trim(),
-        pincode: form.pincode.trim(),
+        name:              form.dealerName.trim(),
+        mobile:            form.mobile.trim(),
+        email:             form.email.trim() || undefined,
+        address:           form.address.trim(),
+        city:              form.city.trim(),
+        state:             form.state.trim(),
+        pincode:           form.pincode.trim(),
+        gstin:             form.gstNumber.trim().toUpperCase() || undefined,
+        gstNumber:         form.gstNumber.trim().toUpperCase() || undefined,
+        panNumber:         form.panNumber.trim().toUpperCase() || undefined,
+        creditLimit:       form.creditLimit.trim() ? Number(form.creditLimit.trim()) : undefined,
+        outstandingAmount: form.outstandingAmount.trim() ? Number(form.outstandingAmount.trim()) : undefined,
+        zone:              form.zone.trim() || undefined,
       };
 
       // Attach photo
@@ -286,20 +311,24 @@ export default function DealerRegistrationScreen({onGoToLogin}) {
     <SafeAreaView style={s.screen} edges={['bottom']}>
       <StatusBar barStyle="light-content" backgroundColor="#C94455"/>
 
-      {/* Auto-close success popup */}
       <SuccessPopup
         visible={showPopup}
         onDone={() => {
           setShowPopup(false);
-          // Pass registration data so login screen and profile can use it
           onGoToLogin(form.dealerName.trim(), {
-            name:    form.dealerName.trim(),
-            mobile:  form.mobile.trim(),
-            email:   form.email.trim(),
-            address: form.address.trim(),
-            city:    form.city.trim(),
-            state:   form.state.trim(),
-            pincode: form.pincode.trim(),
+            name:              form.dealerName.trim(),
+            mobile:            form.mobile.trim(),
+            email:             form.email.trim(),
+            address:           form.address.trim(),
+            city:              form.city.trim(),
+            state:             form.state.trim(),
+            pincode:           form.pincode.trim(),
+            gstin:             form.gstNumber.trim().toUpperCase(),
+            gstNumber:         form.gstNumber.trim().toUpperCase(),
+            panNumber:         form.panNumber.trim().toUpperCase(),
+            creditLimit:       form.creditLimit ? Number(form.creditLimit) : 0,
+            outstandingAmount: form.outstandingAmount ? Number(form.outstandingAmount) : 0,
+            zone:              form.zone.trim(),
           });
         }}
       />
@@ -313,6 +342,7 @@ export default function DealerRegistrationScreen({onGoToLogin}) {
           <Animated.View style={{opacity:fadeO, transform:[{translateY:fadeY}]}}>
             <View style={s.card}>
 
+              {/* ── Basic Details ── */}
               <Field label="Dealer Name" value={form.dealerName}
                 onChange={set('dealerName')} placeholder="Your full name / dealer name"
                 icon={IC.person} error={errors.dealerName}/>
@@ -325,8 +355,10 @@ export default function DealerRegistrationScreen({onGoToLogin}) {
 
               <Field label="Email ID" value={form.email}
                 onChange={set('email')} placeholder="dealer@example.com"
-                keyboard="email-address" icon={IC.email} error={errors.email} noCapitalize/>
+                keyboard="email-address" icon={IC.email} error={errors.email}
+              />
 
+              {/* ── Address ── */}
               <Field label="Address" value={form.address}
                 onChange={set('address')} placeholder="Shop no, street, area"
                 icon={IC.location} error={errors.address}/>
@@ -350,6 +382,45 @@ export default function DealerRegistrationScreen({onGoToLogin}) {
                 keyboard="number-pad" maxLen={6}
                 icon={IC.pin} error={errors.pincode} noCapitalize/>
 
+              {/* ── Business / Tax Details (new section) ── */}
+              <SectionLabel title="Business / Tax Details"/>
+
+              <Field label="GST Number" value={form.gstNumber}
+                onChange={v => set('gstNumber')(v.replace(/\s/g,'').toUpperCase())}
+                placeholder="e.g. 22AAAAA0000A1Z5"
+                icon={IC.gst} error={errors.gstNumber}
+                maxLen={15}
+                hint="15-digit GST registration number"/>
+
+              <Field label="PAN Number" value={form.panNumber}
+                onChange={v => set('panNumber')(v.replace(/\s/g,'').toUpperCase())}
+                placeholder="e.g. ABCDE1234F"
+                icon={IC.pan} error={errors.panNumber}
+               maxLen={10}
+                hint="10-character PAN card number"/>
+
+              <View style={s.rowTwo}>
+                <View style={{flex:1, marginRight:8}}>
+                  <Field label="Credit Limit (₹)" value={form.creditLimit}
+                    onChange={v => set('creditLimit')(v.replace(/[^0-9.]/g,''))}
+                    placeholder="e.g. 100000"
+                    keyboard="numeric" icon={IC.credit}
+                 />
+                </View>
+                <View style={{flex:1}}>
+                  <Field label="Outstanding (₹)" value={form.outstandingAmount}
+                    onChange={v => set('outstandingAmount')(v.replace(/[^0-9.]/g,''))}
+                    placeholder="e.g. 5000"
+                    keyboard="numeric" icon={IC.credit}
+                    />
+                </View>
+              </View>
+
+              <Field label="Zone" value={form.zone}
+                onChange={set('zone')} placeholder="e.g. North, South, East, West"
+                icon={IC.zone} />
+
+              {/* ── Photo ── */}
               <View style={s.fw}>
                 <View style={s.flr}>
                   <Text style={s.fl}>Dealer Photo</Text>
@@ -394,50 +465,31 @@ const s = StyleSheet.create({
 
   /* Wave Header */
   header:        {width:'100%', height:HEADER_H, backgroundColor:'#C94455', overflow:'hidden'},
-  headerContent: {
-    flex:1, flexDirection:'row', alignItems:'center',
-    justifyContent:'space-between',
-    paddingHorizontal:20, paddingBottom:36,
-  },
+  headerContent: {flex:1, flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingHorizontal:20, paddingBottom:36},
   headerLeft:    {flex:1, alignItems:'flex-start', justifyContent:'center'},
-  headerGreeting:{fontSize:11, color:'rgba(255,255,255,0.70)', fontWeight:'600',
-                   letterSpacing:0.4, marginBottom:4},
-  headerTitle:   {fontSize:18, fontWeight:'900', color:'#FFFFFF', letterSpacing:0.3,
-                   textShadowColor:'rgba(0,0,0,0.20)', textShadowOffset:{width:0,height:1},
-                   textShadowRadius:3, marginBottom:6},
-  headerDivider: {width:24, height:2, borderRadius:2, backgroundColor:'rgba(255,255,255,0.45)',
-                   marginBottom:5},
-  headerSub:     {fontSize:10, color:'rgba(255,255,255,0.60)', letterSpacing:0.8,
-                   textTransform:'uppercase'},
-  headerLogoCard:{
-    backgroundColor:'#FFFFFF', borderRadius:18,
-    paddingHorizontal:12, paddingVertical:8,
-    alignItems:'center', justifyContent:'center',
-    shadowColor:'#000', shadowOffset:{width:0,height:3},
-    shadowOpacity:0.12, shadowRadius:8, elevation:4,
-  },
+  headerGreeting:{fontSize:11, color:'rgba(255,255,255,0.70)', fontWeight:'600', letterSpacing:0.4, marginBottom:4},
+  headerTitle:   {fontSize:18, fontWeight:'900', color:'#FFFFFF', letterSpacing:0.3, textShadowColor:'rgba(0,0,0,0.20)', textShadowOffset:{width:0,height:1}, textShadowRadius:3, marginBottom:6},
+  headerDivider: {width:24, height:2, borderRadius:2, backgroundColor:'rgba(255,255,255,0.45)', marginBottom:5},
+  headerSub:     {fontSize:10, color:'rgba(255,255,255,0.60)', letterSpacing:0.8, textTransform:'uppercase'},
+  headerLogoCard:{backgroundColor:'#FFFFFF', borderRadius:18, paddingHorizontal:12, paddingVertical:8, alignItems:'center', justifyContent:'center', shadowColor:'#000', shadowOffset:{width:0,height:3}, shadowOpacity:0.12, shadowRadius:8, elevation:4},
   headerLogo:    {width:W*0.34, height:44},
 
   /* Form card */
-  card: {
-    marginHorizontal:14, marginTop:18, marginBottom:8,
-    backgroundColor:'#FFFFFF', borderRadius:22,
-    paddingHorizontal:18, paddingTop:22, paddingBottom:26,
-    shadowColor:'#C51F2B', shadowOffset:{width:0,height:4},
-    shadowOpacity:0.08, shadowRadius:16, elevation:5,
-    borderWidth:1, borderColor:'rgba(197,31,43,0.07)',
-  },
+  card: {marginHorizontal:14, marginTop:18, marginBottom:8, backgroundColor:'#FFFFFF', borderRadius:22, paddingHorizontal:18, paddingTop:22, paddingBottom:26, shadowColor:'#C51F2B', shadowOffset:{width:0,height:4}, shadowOpacity:0.08, shadowRadius:16, elevation:5, borderWidth:1, borderColor:'rgba(197,31,43,0.07)'},
+
+  /* Section label */
+  secLabelWrap: {flexDirection:'row', alignItems:'center', marginVertical:14},
+  secLabelLine: {flex:1, height:1, backgroundColor:'rgba(197,31,43,0.15)'},
+  secLabelTxt:  {fontSize:11, fontWeight:'800', color:R_MID, letterSpacing:0.8, textTransform:'uppercase', marginHorizontal:10},
 
   /* Field */
   fw:      {marginBottom:14},
   flr:     {flexDirection:'row', alignItems:'center', marginBottom:6},
   fl:      {fontSize:12, fontWeight:'700', color:'#374151', letterSpacing:0.3},
   freq:    {fontSize:13, color:R_MID, fontWeight:'700'},
-  optTag:  {marginLeft:6, backgroundColor:PINK_BG, paddingHorizontal:7, paddingVertical:2,
-             borderRadius:6, borderWidth:1, borderColor:'rgba(197,31,43,0.15)'},
+  optTag:  {marginLeft:6, backgroundColor:PINK_BG, paddingHorizontal:7, paddingVertical:2, borderRadius:6, borderWidth:1, borderColor:'rgba(197,31,43,0.15)'},
   optTagT: {fontSize:10, color:R_MID, fontWeight:'600'},
-  fbox:    {height:52, borderRadius:13, borderWidth:1.5, borderColor:'#E8E8E8',
-             backgroundColor:'#FAFAFA', flexDirection:'row', alignItems:'center'},
+  fbox:    {height:52, borderRadius:13, borderWidth:1.5, borderColor:'#E8E8E8', backgroundColor:'#FAFAFA', flexDirection:'row', alignItems:'center'},
   fboxOn:  {borderColor:R_MID, backgroundColor:'#FFF5F5'},
   fboxErr: {borderColor:'#EF4444', backgroundColor:'#FFF5F5'},
   fic:     {paddingLeft:13, paddingRight:8},
@@ -447,10 +499,7 @@ const s = StyleSheet.create({
   rowTwo:  {flexDirection:'row'},
 
   /* Submit */
-  submitBtn: {height:56, borderRadius:16, backgroundColor:R_MID,
-               alignItems:'center', justifyContent:'center', marginTop:20,
-               shadowColor:R_MID, shadowOffset:{width:0,height:8},
-               shadowOpacity:0.32, shadowRadius:16, elevation:7},
+  submitBtn: {height:56, borderRadius:16, backgroundColor:R_MID, alignItems:'center', justifyContent:'center', marginTop:20, shadowColor:R_MID, shadowOffset:{width:0,height:8}, shadowOpacity:0.32, shadowRadius:16, elevation:7},
   submitOff: {opacity:0.55},
   submitT:   {color:'#FFF', fontSize:16, fontWeight:'800', letterSpacing:0.4},
 
@@ -463,49 +512,12 @@ const s = StyleSheet.create({
   loginRowT: {fontSize:14, color:GREY},
   loginRowL: {fontSize:14, fontWeight:'800', color:R_MID},
 
-  /* ── Success Popup ── */
-  popOverlay: {
-    flex:1,
-    backgroundColor:'rgba(0,0,0,0.60)',
-    alignItems:'center',
-    justifyContent:'center',
-    paddingHorizontal:28,
-  },
-  popBox: {
-    width:'100%',
-    backgroundColor:'#FFFFFF',
-    borderRadius:24,
-    paddingHorizontal:24,
-    paddingTop:32,
-    paddingBottom:28,
-    alignItems:'center',
-    shadowColor:'#000',
-    shadowOffset:{width:0, height:16},
-    shadowOpacity:0.20,
-    shadowRadius:32,
-    elevation:20,
-  },
-  popCircle: {
-    width:80, height:80, borderRadius:40,
-    backgroundColor:'#22C55E',
-    alignItems:'center', justifyContent:'center',
-    marginBottom:20,
-    shadowColor:'#22C55E',
-    shadowOffset:{width:0, height:6},
-    shadowOpacity:0.35, shadowRadius:14, elevation:8,
-  },
-  popTitle: {
-    fontSize:21, fontWeight:'900', color:DARK,
-    textAlign:'center', marginBottom:12,
-    letterSpacing:0.2,
-  },
-  popMsg: {
-    fontSize:13, color:GREY, textAlign:'center',
-    lineHeight:21, marginBottom:18,
-  },
-  popBadge:      undefined,
-  popBadgeEmoji: undefined,
-  popBadgeT:     undefined,
+  /* Success Popup */
+  popOverlay:    {flex:1, backgroundColor:'rgba(0,0,0,0.60)', alignItems:'center', justifyContent:'center', paddingHorizontal:28},
+  popBox:        {width:'100%', backgroundColor:'#FFFFFF', borderRadius:24, paddingHorizontal:24, paddingTop:32, paddingBottom:28, alignItems:'center', shadowColor:'#000', shadowOffset:{width:0,height:16}, shadowOpacity:0.20, shadowRadius:32, elevation:20},
+  popCircle:     {width:80, height:80, borderRadius:40, backgroundColor:'#22C55E', alignItems:'center', justifyContent:'center', marginBottom:20, shadowColor:'#22C55E', shadowOffset:{width:0,height:6}, shadowOpacity:0.35, shadowRadius:14, elevation:8},
+  popTitle:      {fontSize:21, fontWeight:'900', color:DARK, textAlign:'center', marginBottom:12, letterSpacing:0.2},
+  popMsg:        {fontSize:13, color:GREY, textAlign:'center', lineHeight:21, marginBottom:18},
   popRedirectRow:{flexDirection:'row', alignItems:'center'},
   popRedirectT:  {fontSize:11, color:'#9CA3AF'},
 });

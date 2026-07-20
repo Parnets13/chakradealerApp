@@ -5,6 +5,7 @@ import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 
 import SplashScreen from './src/components/SplashScreen';
+import WelcomeScreen from './src/components/WelcomeScreen';
 import DealerRegistrationScreen from './src/components/DealerRegistrationScreen';
 import RegistrationOtpScreen from './src/components/RegistrationOtpScreen';
 import AuthScreens from './src/components/AuthScreens';
@@ -16,6 +17,7 @@ const Stack = createNativeStackNavigator();
 
 const APP_STAGE = {
   SPLASH: 'splash',
+  WELCOME: 'welcome',
   REGISTRATION: 'registration',
   REG_OTP: 'reg_otp',      // OTP verification right after registration
   AUTH: 'auth',
@@ -76,13 +78,15 @@ function App() {
     
     setIsReady(true);
     
-    const splashTimer = setTimeout(() => {
-      console.log('✅ Splash complete, moving to Registration screen');
-      setStage(APP_STAGE.REGISTRATION);
-    }, SPLASH_DURATION_MS);
+    if (stage === APP_STAGE.SPLASH) {
+      const splashTimer = setTimeout(() => {
+        console.log('✅ Splash complete, moving to Welcome screen');
+        setStage(APP_STAGE.WELCOME);
+      }, SPLASH_DURATION_MS);
 
-    return () => clearTimeout(splashTimer);
-  }, []);
+      return () => clearTimeout(splashTimer);
+    }
+  }, [stage]);
 
   useEffect(() => {
     console.log('📱 Stage changed to:', stage);
@@ -93,8 +97,8 @@ function App() {
     const backHandler = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
-        if (stage === APP_STAGE.REGISTRATION) {
-          // On registration screen, show exit confirmation
+        if (stage === APP_STAGE.WELCOME) {
+          // On welcome screen, show exit confirmation
           Alert.alert(
             'Exit App',
             'Do you want to exit?',
@@ -112,9 +116,14 @@ function App() {
           );
           return true;
         }
+        if (stage === APP_STAGE.REGISTRATION) {
+          // On registration screen, go back to welcome
+          setStage(APP_STAGE.WELCOME);
+          return true;
+        }
         if (stage === APP_STAGE.AUTH) {
-          // On login screen, back goes to registration
-          setStage(APP_STAGE.REGISTRATION);
+          // On login screen, back goes to welcome
+          setStage(APP_STAGE.WELCOME);
           return true;
         }
         if (stage === APP_STAGE.DASHBOARD) {
@@ -162,6 +171,14 @@ function App() {
       <SafeAreaProvider>
         <StatusBar barStyle="light-content" backgroundColor="#071B1A" />
         <SplashScreen />
+      </SafeAreaProvider>
+    );
+  }
+
+  if (stage === APP_STAGE.WELCOME) {
+    return (
+      <SafeAreaProvider>
+        <WelcomeScreen onRegister={() => setStage(APP_STAGE.REGISTRATION)} />
       </SafeAreaProvider>
     );
   }
@@ -221,7 +238,7 @@ function App() {
                       await dealerService.clearLocalProfile().catch(() => {});
                       setDealerData(null);
                       setRegFormData(null);
-                      setStage(APP_STAGE.REGISTRATION);
+                      setStage(APP_STAGE.SPLASH);
                     }}
                     activePage={dashboardPage}
                     onPageChange={setDashboardPage}

@@ -73,6 +73,7 @@ const NAV_ITEMS = [
 function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange, dealer}) {
   const [activeTab, setActiveTab] = useState('home');
   const [activePage, setActivePage] = useState(externalActivePage || 'home');
+  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
   // Order ID + full order data to pass to Dispatch & Tracking from My Orders
   const [dispatchOrderId,   setDispatchOrderId]   = useState(null);
   const [dispatchOrderData, setDispatchOrderData] = useState(null);
@@ -87,6 +88,10 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
   }, [externalActivePage]);
 
   const handleNavigate = page => {
+    // If navigating back to home, refresh the dashboard
+    if (page === 'home' && activePage !== 'home') {
+      setDashboardRefreshKey(prev => prev + 1);
+    }
     setActivePage(page);
     if (onPageChange) onPageChange(page);
     if (NAV_ITEMS.map(n => n.id).includes(page)) setActiveTab(page);
@@ -145,7 +150,7 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollBody}>
-        <HomePage onNavigate={handleNavigate} onLogout={onLogout} />
+        <HomePage onNavigate={handleNavigate} onLogout={onLogout} refreshKey={dashboardRefreshKey} />
       </ScrollView>
       <BottomNavigation activeTab={activeTab} onChange={tab => {
         setActiveTab(tab);
@@ -158,11 +163,11 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
 // ─── Home Page ─────────────────────────────────────────────────────────────────
 import dealerService from './services/dealerService';
 
-function HomePage({onNavigate}) {
+function HomePage({onNavigate, refreshKey}) {
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState(null);
 
-  useEffect(() => { loadDashboard(); }, []);
+  useEffect(() => { loadDashboard(); }, [refreshKey]);
 
   const loadDashboard = async () => {
     try {
@@ -183,21 +188,29 @@ function HomePage({onNavigate}) {
   const dealerName     = dealer.name            || 'Dealer';
   const dealerCode     = dealer.dealerCode      || 'N/A';
 
-  const totalOrders      = stats.totalOrders              || 0;
-  const pendingApproval  = stats.pendingApproval || stats.pendingOrders || 0;
-  const approved         = stats.approved                 || 0;
-  const processing       = stats.processing               || 0;
-  const dispatched       = stats.dispatched               || 0;
-  const delivered        = stats.deliveredOrders || stats.delivered || 0;
-  const monthOrders      = stats.monthOrders              || 0;
-  const monthlyValue     = stats.monthlyPurchaseAmount    || 0;
-  const totalValue       = stats.totalPurchaseValue       || 0;
-  const avgOrder         = stats.avgOrderValue            || 0;
-  const monthGrowth      = stats.monthGrowth              || 0;
-  const pendingInvoices  = stats.pendingInvoices          || 0;
-  const availableCredit  = dealer.availableCredit         || stats.availableCredit || 0;
-  const creditLimit      = dealer.creditLimit             || stats.creditLimit || 0;
-  const usedCredit       = dealer.usedCredit              || stats.usedCredit || 0;
+  const totalOrders      = stats.totalOrders                                               || 0;
+  // Backend returns pendingApprovalOrders; support legacy pendingApproval / pendingOrders too
+  const pendingApproval  = stats.pendingApprovalOrders || stats.pendingApproval || stats.pendingOrders || 0;
+  // Backend returns approvedOrders; support legacy approved too
+  const approved         = stats.approvedOrders        || stats.approved                              || 0;
+  // "Processing" = picking + sorting + packing combined
+  const processing       = (stats.pickingOrders  || 0)
+                         + (stats.sortingOrders  || 0)
+                         + (stats.packingOrders  || 0)
+                         + (stats.processing     || 0);
+  // Backend returns dispatchedOrders; support legacy dispatched too
+  const dispatched       = stats.dispatchedOrders      || stats.dispatched                            || 0;
+  // Backend returns deliveredOrders; support legacy delivered too
+  const delivered        = stats.deliveredOrders       || stats.delivered                             || 0;
+  const monthOrders      = stats.monthOrders                                                          || 0;
+  const monthlyValue     = stats.monthlyPurchaseAmount                                                || 0;
+  const totalValue       = stats.totalPurchaseValue                                                   || 0;
+  const avgOrder         = stats.avgOrderValue                                                        || 0;
+  const monthGrowth      = stats.monthGrowth                                                          || 0;
+  const pendingInvoices  = stats.pendingInvoices                                                      || 0;
+  const availableCredit  = dealer.availableCredit      || stats.availableCredit                       || 0;
+  const creditLimit      = dealer.creditLimit          || stats.creditLimit                           || 0;
+  const usedCredit       = dealer.usedCredit           || stats.usedCredit                            || 0;
 
   if (loading) {
     return (

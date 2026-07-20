@@ -311,6 +311,29 @@ const Inp = ({ style, ...props }) => (
 function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
   const [saving, setSaving] = useState(false);
 
+  // ── Resolved dealer profile — prop first, then AsyncStorage fallback ─────
+  // This ensures Create Order always shows the currently logged-in dealer,
+  // never a stale/wrong dealer from a previous session.
+  const [resolvedDealer, setResolvedDealer] = useState(dealer || null);
+  useEffect(() => {
+    if (!visible) return;
+    // Prefer the prop if it has a name/mobile
+    if (dealer?.name || dealer?.businessName || dealer?.mobile) {
+      setResolvedDealer(dealer);
+      return;
+    }
+    // Fallback: load from AsyncStorage
+    if (AsyncStorage) {
+      AsyncStorage.getItem('dealerProfile')
+        .then(raw => {
+          if (raw) {
+            try { setResolvedDealer(JSON.parse(raw)); } catch (_) {}
+          }
+        })
+        .catch(() => {});
+    }
+  }, [visible, dealer]);
+
   // ── Company/Vendor dropdown ───────────────────────────────────────────────
   const [companies,        setCompanies]        = useState([]);
   const [selectedCompany,  setSelectedCompany]  = useState(null);
@@ -358,46 +381,93 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
   const gst = hasPrice ? +((sub * gstN) / 100).toFixed(2) : 0;
   const tot = +(sub + gst).toFixed(2);
 
-  // ── Load companies/vendors from dealer backend (corporate clients list) ──
-  const loadCompanies = () => {
+
+
+  // ── Load all data (companies, categories, products) ──
+  const loadAllData = () => {
     if (!apiService) return;
     setLoadingCompanies(true);
-    // Use inventory/products to extract unique vendor names, or fetch corporate clients
-    apiService.get('/products', { limit: 200 })
-      .then(r => {
-        const prods = r?.data || [];
-        // Build unique company list from product vendors field or use static fallback
-        const uniqueVendors = [];
-        const seen = new Set();
-        prods.forEach(p => {
-          const v = p.vendor || p.vendorName || p.manufacturer || '';
-          if (v && !seen.has(v)) { seen.add(v); uniqueVendors.push({ id: v, name: v }); }
-        });
-        // If no vendor data in products, keep empty (user will type manually)
-        setCompanies(uniqueVendors);
-      })
-      .catch(() => setCompanies([]))
-      .finally(() => setLoadingCompanies(false));
-  };
-
-  // ── Load categories from dealer backend ───────────────────────────────────
-  const loadCategories = () => {
-    if (!apiService) return;
     setLoadingCategories(true);
-    apiService.get('/products/categories', { limit: 200 })
-      .then(r => setCategories(r?.data || []))
-      .catch(() => setCategories([]))
-      .finally(() => setLoadingCategories(false));
+    setLoadingProducts(true);
+
+    // Fetch vendors from /procurement/vendors and stock items from /inventory/stock-items
+    Promise.all([
+      apiService.get('/procurement/vendors').catch(() => ({ data: [] })),
+      apiService.get('/inventory/stock-items').catch(() => ({ data: [] }))
+    ])
+      .then(([vendorsRes, stockRes]) => {
+        console.log('Vendors API response:', vendorsRes);
+        const vendors = vendorsRes?.data || [];
+        console.log('Vendors array:', vendors);
+        const prods = stockRes?.data || [];
+
+        // Load vendors from /procurement/vendors
+        const vendorList = vendors.map(v => ({
+          id: v.id || v._id,
+          name: v.name || v.companyName || v.vendorName || v.businessName
+        })).filter(v => v.id && v.name);
+        console.log('Vendor list to set in companies:', vendorList);
+        
+        // If no vendors from API, fall back to extracting from products
+        if (vendorList.length === 0) {
+          const uniqueVendors = [];
+          const seenVendors = new Set();
+          prods.forEach(p => {
+            const v = p.vendor || p.vendorName || p.manufacturer || '';
+            if (v && !seenVendors.has(v)) {
+              seenVendors.add(v);
+              uniqueVendors.push({ id: v, name: v });
+            }
+          });
+          setCompanies(uniqueVendors);
+        } else {
+          setCompanies(vendorList);
+          console.log('Companies state set to:', vendorList);
+        }
+
+        // Load unique categories
+        const uniqueCats = [];
+        const seenCats = new Set();
+        prods.forEach(p => {
+          const c = p.category || p.categoryName || '';
+          if (c && !seenCats.has(c)) {
+            seenCats.add(c);
+            uniqueCats.push({ id: c, name: c });
+          }
+        });
+        setCategories(uniqueCats);
+
+        // Load products
+        setProducts(prods);
+      })
+      .catch(() => {
+        setCompanies([]);
+        setCategories([]);
+        setProducts([]);
+      })
+      .finally(() => {
+        setLoadingCompanies(false);
+        setLoadingCategories(false);
+        setLoadingProducts(false);
+      });
   };
 
-  // ── Load products filtered by category name ────────────────────────────────
-  const loadProducts = (categoryName = null) => {
+  // ── Load products (optionally filtered by company) ──
+  const loadProducts = () => {
     if (!apiService) return;
     setLoadingProducts(true);
-    const params = { limit: 200 };
-    if (categoryName) params.category = categoryName;
-    apiService.get('/products', params)
-      .then(r => setProducts(r?.data || []))
+    apiService.get('/inventory/stock-items')
+      .then(r => {
+        let prods = r?.data || [];
+        if (selectedCompany?.id) {
+          // Filter products by vendor if company selected
+          prods = prods.filter(p => 
+            (p.vendorId && String(p.vendorId) === String(selectedCompany.id)) ||
+            (p.vendor && p.vendor === selectedCompany.name)
+          );
+        }
+        setProducts(prods);
+      })
       .catch(() => setProducts([]))
       .finally(() => setLoadingProducts(false));
   };
@@ -415,17 +485,23 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
   useEffect(() => {
     if (!visible) return;
     reset();
-    loadCompanies();
-    loadCategories();
-    loadProducts();
+    loadAllData();
   }, [visible]);
 
   // Category selected → reload products for that category, clear product
   const handleCategorySelect = (cat) => {
     setSelectedCategory(cat);
     setSelectedProduct(null);
-    // Pass category name — backend filters by categoryName
-    loadProducts(cat.name || cat.id);
+    // Filter products by category name
+    apiService.get('/inventory/stock-items')
+      .then(r => {
+        let prods = r?.data || [];
+        if (cat?.name) {
+          prods = prods.filter(p => (p.category || p.categoryName || '') === cat.name);
+        }
+        setProducts(prods);
+      })
+      .catch(() => setProducts([]));
   };
 
   // Product selected → auto-fill price/gst/discount/qty from product data + sync category
@@ -464,12 +540,12 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
     const now      = new Date().toISOString();
     const fullAddr = [address.trim(), city.trim(), stateName.trim(), pincode.trim()].filter(Boolean).join(', ');
 
-    // Dealer info auto-filled from logged-in account
+    // Dealer info — always from the resolved (logged-in) dealer profile
     const dealerInfo = {
-      name:    dealer?.businessName || dealer?.name || dealer?.dealerName || '',
-      mobile:  dealer?.mobile || dealer?.phone || '',
-      email:   dealer?.email || '',
-      address: fullAddr || dealer?.address || '',
+      name:    resolvedDealer?.businessName || resolvedDealer?.name || resolvedDealer?.dealerName || '',
+      mobile:  resolvedDealer?.mobile || resolvedDealer?.phone || '',
+      email:   resolvedDealer?.email || '',
+      address: fullAddr || resolvedDealer?.address || '',
     };
 
     // ── POST to dealer backend ────────────────────────────────────────────────
@@ -477,7 +553,10 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
     if (apiService && productId) {
       try {
         const res = await apiService.post('/orders/create-form', {
-          productId,
+          // Send both _id and sku so backend can resolve product regardless of which model the id belongs to
+          productId:            selectedProduct?._id || productId,
+          productSku:           selectedProduct?.sku || selectedProduct?.itemCode || undefined,
+          productName:          productName || undefined,
           quantity:             qtyN,
           unitPrice:            priceN || undefined,
           discount:             discN  || undefined,
@@ -997,7 +1076,7 @@ function EditOrderModal({ visible, order, onClose, onSaved }) {
                   return (
                     <View key={inv.id || inv.invoiceNo || i} style={em.invRow}>
                       <View style={{ flex: 1 }}>
-                        <Text style={em.invNo}>{inv.invoiceNo || inv.invoiceNumber || `INV-${i + 1}`}</Text>
+                        <Text style={em.invNo}>{inv.invoiceNo || inv.invoiceNumber || inv.number || inv.id || inv._id || `INV-${i + 1}`}</Text>
                         {firstInvItem?.description ? (
                           <Text style={{ fontSize: 10, color: C.blue, fontWeight: '600', marginTop: 1 }} numberOfLines={1}>
                             {firstInvItem.description}{inv.items?.length > 1 ? ` +${inv.items.length - 1}` : ''}
@@ -1261,7 +1340,7 @@ function ViewOrderModal({ visible, order, onClose }) {
                     <View key={inv.id || inv.invoiceNo || i} style={[vm.invRow, i === invoices.length - 1 && { borderBottomWidth: 0 }]}>
                       <View style={vm.invIcon}><Icon name="file-document-outline" size={14} color={C.blue} /></View>
                       <View style={{ flex: 1 }}>
-                        <Text style={vm.invNo}>{inv.invoiceNo || inv.invoiceNumber || `INV-${i + 1}`}</Text>
+                        <Text style={vm.invNo}>{inv.invoiceNo || inv.invoiceNumber || inv.number || inv.id || inv._id || `INV-${i + 1}`}</Text>
                         {firstInvItem?.description ? (
                           <Text style={{ fontSize: 10, color: C.blue, fontWeight: '600', marginTop: 1 }} numberOfLines={1}>
                             {firstInvItem.description}{inv.items?.length > 1 ? ` +${inv.items.length - 1} more` : ''}
@@ -1669,8 +1748,8 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
 
   const handleTrack = (orderId, order) => {
     if (onNavigateToDispatch) {
-      // Pass null to open Dispatch Tracking in list mode (all orders view)
-      onNavigateToDispatch(null, null);
+      // Pass the real orderId + order so Dispatch Tracking shows this specific order's timeline
+      onNavigateToDispatch(orderId, order);
     } else {
       Alert.alert(
         `Order Status: ${order?.status || 'Unknown'}`,
@@ -1680,11 +1759,36 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
     }
   };
 
-  const handlePlaceOrder = (order) => {
-    if (onPlaceOrder) {
-      onPlaceOrder(order);
-    } else {
-      Alert.alert('Navigation Error', 'Place Order page is not available.');
+  const handlePlaceOrder = async (order) => {
+    try {
+      // First update locally for immediate feedback
+      setOrders(prev => prev.map(o => 
+        (o.orderId || o.id) === (order.orderId || order.id) 
+          ? { ...o, status: 'Pending Approval' } 
+          : o
+      ));
+
+      // Then call the API to place the order
+      if (apiService && !order._isLocal) {
+        const id = resolveId(order);
+        try {
+          // Try with the place endpoint first
+          await apiService.post(`/orders/${id}/place`, {});
+        } catch (placeErr) {
+          // Fall back to simple status update
+          await apiService.put(`/orders/${id}`, { status: 'Pending Approval' });
+        }
+      }
+      
+      Alert.alert('Success', 'Order placed successfully!');
+    } catch (err) {
+      // Revert on error
+      setOrders(prev => prev.map(o => 
+        (o.orderId || o.id) === (order.orderId || order.id) 
+          ? { ...o, status: order.status } 
+          : o
+      ));
+      Alert.alert('Error', 'Failed to place order. Please try again.');
     }
   };
 
