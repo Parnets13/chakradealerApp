@@ -1005,6 +1005,21 @@ function EditOrderModal({ visible, order, onClose, onSaved }) {
 
     setLoadInv(true);
 
+    // If invoiceNo is stored on the order, build a minimal invoice item immediately
+    if (order.invoiceNo) {
+      setInvoices([{
+        id:         order.invoiceId || order.invoiceNo,
+        invoiceNo:  order.invoiceNo,
+        grandTotal: order.value || 0,
+        status:     order.status === 'Invoice Generated' ? 'Sent' : 'Pending',
+        paymentStatus: 'Pending',
+        date:       null,
+        items:      order.lineItems?.map(li => ({ description: li.name })) || [],
+      }]);
+      setLoadInv(false);
+      return;
+    }
+
     // Use mongodbId for exact salesOrderId match; fallback to orderId string search
     const params = { limit: 50 };
     if (mongodbId) params.mongodbId = mongodbId;
@@ -1244,6 +1259,21 @@ function ViewOrderModal({ visible, order, onClose }) {
     if ((!ordId && !mongodbId) || order._isLocal || !apiService) { setInvoices([]); return; }
 
     setLoadInv(true);
+
+    // If invoiceNo is stored on the order, show it immediately without an API call
+    if (order.invoiceNo) {
+      setInvoices([{
+        id:         order.invoiceId || order.invoiceNo,
+        invoiceNo:  order.invoiceNo,
+        grandTotal: order.value || 0,
+        status:     'Sent',
+        paymentStatus: 'Pending',
+        date:       null,
+        items:      order.lineItems?.map(li => ({ description: li.name })) || [],
+      }]);
+      setLoadInv(false);
+      return;
+    }
 
     // Use mongodbId for exact salesOrderId match; fallback to orderId string search
     const params = { limit: 50 };
@@ -1514,6 +1544,15 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
   // Inline invoice state for this card
   const [invoiceInfo, setInvoiceInfo] = useState(null);
   useEffect(() => {
+    // If invoiceNo is already on the order (written back from ERP), use it directly
+    if (order.invoiceNo) {
+      setInvoiceInfo({
+        count:     1,
+        invoiceNo: order.invoiceNo,
+        amount:    order.value || 0,
+      });
+      return;
+    }
     if (!order || !apiService || order._isLocal) return;
     const mongodbId = order.mongodbId || order._id || '';
     const oid       = order.orderId || order.id || '';
@@ -1676,10 +1715,11 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
           onPress={() => onDownloadPdf && onDownloadPdf(order)}>
           <Text style={oc.actTxt}>PDF</Text>
         </Pressable>
-        <Pressable style={[oc.actBtn, { backgroundColor: C.red }]}
-          onPress={() => onDelete && onDelete(orderId, order)}>
-          <Icon name="delete-outline" size={12} color={C.white} />
-          <Text style={oc.actTxt}>Delete</Text>
+        <Pressable style={[oc.actBtn, { backgroundColor: canPlace ? '#1A7A3C' : '#B0BEC5' }]}
+          onPress={() => canPlace && onPlaceOrder && onPlaceOrder(order)}
+          disabled={!canPlace}>
+          <Icon name="send" size={12} color={C.white} />
+          <Text style={oc.actTxt}>Place Order</Text>
         </Pressable>
       </View>
     </View>
