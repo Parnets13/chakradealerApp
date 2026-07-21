@@ -72,7 +72,7 @@ class AuthService {
   // Verify OTP and login
   async verifyOTP(mobile, otp) {
     try {
-      console.log('🔐 Verifying OTP for:', mobile);
+      console.log(' Verifying OTP for:', mobile);
       const response = await apiService.post(API_ENDPOINTS.AUTH.VERIFY_OTP, {
         mobile: String(mobile).trim(),
         otp: String(otp).trim(),

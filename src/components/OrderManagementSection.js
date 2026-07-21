@@ -472,10 +472,37 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
       .finally(() => setLoadingProducts(false));
   };
 
+  // ── Invoice count for selected product ──────────────────────────────────
+  const [productInvoiceInfo, setProductInvoiceInfo] = useState(null);
+  const [loadingProductInv,  setLoadingProductInv]  = useState(false);
+
+  useEffect(() => {
+    setProductInvoiceInfo(null);
+    if (!selectedProduct || !apiService) return;
+    const sku = selectedProduct.sku || selectedProduct.itemCode || '';
+    const pid = selectedProduct._id || selectedProduct.id || '';
+    if (!sku && !pid) return;
+    setLoadingProductInv(true);
+    // Fetch invoices linked to this product via its SKU or productId
+    apiService.get('/invoices', { ...(sku ? { sku } : { productId: pid }), limit: 50 })
+      .then(r => {
+        const list = r?.data || [];
+        if (list.length > 0) {
+          const totalAmt = list.reduce((s, i) => s + (i.grandTotal || 0), 0);
+          setProductInvoiceInfo({ count: list.length, totalAmt, latest: list[0] });
+        } else {
+          setProductInvoiceInfo({ count: 0 });
+        }
+      })
+      .catch(() => setProductInvoiceInfo(null))
+      .finally(() => setLoadingProductInv(false));
+  }, [selectedProduct]);
+
   const reset = () => {
     setSelectedCompany(null); setCompanies([]);
     setSelectedCategory(null); setSelectedProduct(null);
     setCategories([]); setProducts([]);
+    setProductInvoiceInfo(null);
     setQty(''); setUnitPrice(''); setDiscount(''); setGstPct('');
     setPayMode(''); setAddress(''); setCity(''); setStateName(''); setPincode('');
     setPoNum(''); setRefNum(''); setRemarks(''); setPriority('Normal');
@@ -767,6 +794,50 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
                       </View>
                     ) : null}
                   </View>
+
+                  {/* ── Invoice info for this product ── */}
+                  <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 }}>
+                      <Icon name="file-document-outline" size={12} color={C.blue} />
+                      <Text style={{ fontSize: 11, fontWeight: '900', color: C.blue, letterSpacing: 0.4 }}>INVOICES FOR THIS PRODUCT</Text>
+                      {loadingProductInv && <ActivityIndicator size="small" color={C.blue} style={{ marginLeft: 4 }} />}
+                    </View>
+                    {!loadingProductInv && productInvoiceInfo === null && (
+                      <Text style={{ fontSize: 11, color: C.muted, fontWeight: '600' }}>Loading…</Text>
+                    )}
+                    {!loadingProductInv && productInvoiceInfo?.count === 0 && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F8F9FA', borderRadius: 7, paddingHorizontal: 10, paddingVertical: 6 }}>
+                        <Icon name="file-document-remove-outline" size={13} color={C.muted} />
+                        <Text style={{ fontSize: 11, color: C.muted, fontWeight: '600' }}>No invoices found for this product</Text>
+                      </View>
+                    )}
+                    {!loadingProductInv && productInvoiceInfo?.count > 0 && (
+                      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.blueBg, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 6 }}>
+                          <Icon name="receipt" size={12} color={C.blue} />
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: C.blue }}>
+                            {productInvoiceInfo.count} Invoice{productInvoiceInfo.count > 1 ? 's' : ''}
+                          </Text>
+                        </View>
+                        {productInvoiceInfo.totalAmt > 0 && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.greenBg, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 6 }}>
+                            <Icon name="currency-inr" size={12} color={C.green} />
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: C.green }}>
+                              Total: ₹{numFmt(productInvoiceInfo.totalAmt)}
+                            </Text>
+                          </View>
+                        )}
+                        {productInvoiceInfo.latest?.invoiceNo && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F3F4F6', borderRadius: 7, paddingHorizontal: 10, paddingVertical: 6 }}>
+                            <Icon name="file-document-check" size={12} color={C.muted} />
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: C.sub }}>
+                              Latest: {productInvoiceInfo.latest.invoiceNo}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </View>
                 </View>
               )}
             </Sec>
@@ -927,40 +998,22 @@ function EditOrderModal({ visible, order, onClose, onSaved }) {
     setNotes(order.notes || order.remarks || '');
     setRemarks(order.remarks || order.notes || '');
     if (!apiService) { setInvoices([]); return; }
-    const ordId = order.orderId || order.id || '';
-    if (!ordId || order._isLocal) { setInvoices([]); return; }
-
-    // Get product name from lineItems for product-based invoice search
-    const lineItems = Array.isArray(order.lineItems) && order.lineItems.length > 0
-      ? order.lineItems : (order.items || []);
-    const prodName = lineItems[0]?.name || lineItems[0]?.itemName || '';
-    const poRef    = order.poNumber || order.purchaseOrderRef || '';
+    const ordId     = order.orderId || order.id || '';
+    const mongodbId = order.mongodbId || order._id || '';
+    if ((!ordId && !mongodbId) || order._isLocal) { setInvoices([]); return; }
 
     setLoadInv(true);
 
-    // Fetch invoices using multiple strategies and merge unique results
-    const fetches = [
-      // 1. Search by orderId (purchaseOrderRef / notes / uniqueId)
-      apiService.get('/invoices', { orderId: ordId, limit: 50 }),
-      // 2. Search by product name inside invoice items
-      prodName ? apiService.get('/invoices', { productName: prodName, limit: 50 }) : Promise.resolve({ data: [] }),
-      // 3. Search by PO number if available
-      poRef ? apiService.get('/invoices', { search: poRef, limit: 50 }) : Promise.resolve({ data: [] }),
-    ];
+    // Use mongodbId for exact salesOrderId match; fallback to orderId string search
+    const params = { limit: 50 };
+    if (mongodbId) params.mongodbId = mongodbId;
+    else params.orderId = ordId;
 
-    Promise.all(fetches)
-      .then(results => {
-        const seen = new Set();
-        const merged = [];
-        for (const r of results) {
-          for (const inv of (r?.data || [])) {
-            const key = String(inv.id || inv._id || inv.invoiceNo);
-            if (!seen.has(key)) { seen.add(key); merged.push(inv); }
-          }
-        }
-        // Sort by date descending
-        merged.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-        setInvoices(merged);
+    apiService.get('/invoices', params)
+      .then(r => {
+        const list = (r?.data || []);
+        list.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+        setInvoices(list);
       })
       .catch(() => setInvoices([]))
       .finally(() => setLoadInv(false));
@@ -1185,38 +1238,22 @@ function ViewOrderModal({ visible, order, onClose }) {
 
   useEffect(() => {
     if (!order || !visible) return;
-    const ordId = order.orderId || order.id || '';
-    if (!ordId || order._isLocal || !apiService) { setInvoices([]); return; }
-
-    // Product name and PO ref for broader search
-    const lineItems = Array.isArray(order.lineItems) && order.lineItems.length > 0
-      ? order.lineItems : (order.items || []);
-    const prodName = lineItems[0]?.name || lineItems[0]?.itemName || '';
-    const poRef    = order.poNumber || order.purchaseOrderRef || '';
+    const ordId     = order.orderId || order.id || '';
+    const mongodbId = order.mongodbId || order._id || '';
+    if ((!ordId && !mongodbId) || order._isLocal || !apiService) { setInvoices([]); return; }
 
     setLoadInv(true);
 
-    const fetches = [
-      // 1. Search by orderId (matches purchaseOrderRef / notes / uniqueId in backend)
-      apiService.get('/invoices', { orderId: ordId, limit: 50 }),
-      // 2. Search by product name inside invoice items.description
-      prodName ? apiService.get('/invoices', { productName: prodName, limit: 50 }) : Promise.resolve({ data: [] }),
-      // 3. Search by PO number reference
-      poRef ? apiService.get('/invoices', { search: poRef, limit: 50 }) : Promise.resolve({ data: [] }),
-    ];
+    // Use mongodbId for exact salesOrderId match; fallback to orderId string search
+    const params = { limit: 50 };
+    if (mongodbId) params.mongodbId = mongodbId;
+    else params.orderId = ordId;
 
-    Promise.all(fetches)
-      .then(results => {
-        const seen = new Set();
-        const merged = [];
-        for (const r of results) {
-          for (const inv of (r?.data || [])) {
-            const key = String(inv.id || inv._id || inv.invoiceNo);
-            if (!seen.has(key)) { seen.add(key); merged.push(inv); }
-          }
-        }
-        merged.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-        setInvoices(merged);
+    apiService.get('/invoices', params)
+      .then(r => {
+        const list = (r?.data || []);
+        list.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+        setInvoices(list);
       })
       .catch(() => setInvoices([]))
       .finally(() => setLoadInv(false));
@@ -1412,32 +1449,24 @@ const vm = StyleSheet.create({
 });
 
 // ─── InvoiceCountInline — shows invoice count as small badge inside card ─────
-// Accepts full order object so it can search by orderId + productName + poNumber
+// Uses mongodbId (salesOrderId) for accurate per-order invoice lookup
 function InvoiceCountInline({ order }) {
   const [count, setCount] = useState(null);
   useEffect(() => {
-    if (!order || !apiService) return;
-    const orderId = !order._isLocal ? (order.orderId || order.id || '') : '';
-    if (!orderId) return;
-    const lineItems = Array.isArray(order.lineItems) && order.lineItems.length > 0
-      ? order.lineItems : (order.items || []);
-    const prodName = lineItems[0]?.name || lineItems[0]?.itemName || '';
+    if (!order || !apiService || order._isLocal) return;
+    const orderId   = order.orderId || order.id || '';
+    const mongodbId = order.mongodbId || order._id || '';
+    if (!orderId && !mongodbId) return;
 
-    const fetches = [
-      apiService.get('/invoices', { orderId, limit: 50 }),
-      prodName ? apiService.get('/invoices', { productName: prodName, limit: 50 }) : Promise.resolve({ data: [] }),
-    ];
-    Promise.all(fetches)
-      .then(results => {
-        const seen = new Set();
-        let total = 0;
-        for (const r of results) {
-          for (const inv of (r?.data || [])) {
-            const key = String(inv.id || inv._id || inv.invoiceNo);
-            if (!seen.has(key)) { seen.add(key); total++; }
-          }
-        }
-        setCount(total);
+    // Build query params — mongodbId gives exact salesOrderId match
+    const params = { limit: 50 };
+    if (mongodbId) params.mongodbId = mongodbId;
+    else params.orderId = orderId;
+
+    apiService.get('/invoices', params)
+      .then(r => {
+        const list = r?.data || [];
+        setCount(list.length > 0 ? list.length : null);
       })
       .catch(() => setCount(null));
   }, [order]);
@@ -1481,6 +1510,26 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
   const firstItem = items[0];
   const totalAmt  = order.value || order.totalAmount;
 
+  // Inline invoice state for this card
+  const [invoiceInfo, setInvoiceInfo] = useState(null);
+  useEffect(() => {
+    if (!order || !apiService || order._isLocal) return;
+    const mongodbId = order.mongodbId || order._id || '';
+    const oid       = order.orderId || order.id || '';
+    if (!mongodbId && !oid) return;
+    const params = { limit: 10 };
+    if (mongodbId) params.mongodbId = mongodbId;
+    else params.orderId = oid;
+    apiService.get('/invoices', params)
+      .then(r => {
+        const list = r?.data || [];
+        if (list.length > 0) {
+          setInvoiceInfo({ count: list.length, invoiceNo: list[0].invoiceNo || list[0].id, amount: list[0].grandTotal });
+        }
+      })
+      .catch(() => {});
+  }, [order]);
+
   return (
     <View style={oc.card}>
       {/* ── Top: Order ID + Status ── */}
@@ -1504,6 +1553,22 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
           <Text style={[oc.statusTxt, { color: st.c }]}>{order.status || 'Unknown'}</Text>
         </View>
       </View>
+
+      {/* ── Invoice info banner (shown when invoice exists) ── */}
+      {invoiceInfo ? (
+        <View style={oc.invBanner}>
+          <Icon name="file-document-check" size={13} color={C.green} />
+          <Text style={oc.invBannerNo} numberOfLines={1}>{invoiceInfo.invoiceNo}</Text>
+          {invoiceInfo.amount > 0 && (
+            <Text style={oc.invBannerAmt}>₹{numFmt(invoiceInfo.amount)}</Text>
+          )}
+          {invoiceInfo.count > 1 && (
+            <View style={oc.invCountChip}>
+              <Text style={oc.invCountTxt}>+{invoiceInfo.count - 1} more</Text>
+            </View>
+          )}
+        </View>
+      ) : null}
 
       {/* ── Dealer name + mobile ── */}
       {(order.customer || order.customerName) ? (
@@ -1556,8 +1621,6 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
                 <Text style={oc.amtLbl}>Total</Text>
               </View>
             )}
-            {/* Invoice count badge */}
-            <InvoiceCountInline order={order} />
           </View>
         </View>
       )}
@@ -1599,11 +1662,6 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
           <Icon name="map-marker-path" size={12} color={C.white} />
           <Text style={oc.actTxt}>Track</Text>
         </Pressable>
-        <Pressable style={[oc.actBtn, { backgroundColor: canPlace ? C.green : '#B0BEC5' }]}
-          onPress={() => canPlace && onPlaceOrder && onPlaceOrder(order)}
-          disabled={!canPlace}>
-          <Text style={oc.actTxt}>{canPlace ? 'Place Order' : 'Submitted'}</Text>
-        </Pressable>
         <Pressable style={[oc.actBtn, { backgroundColor: C.blue }]}
           onPress={() => onView && onView(order)}>
           <Text style={oc.actTxt}>View</Text>
@@ -1616,6 +1674,11 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
         <Pressable style={[oc.actBtn, { backgroundColor: '#2E7D32' }]}
           onPress={() => onDownloadPdf && onDownloadPdf(order)}>
           <Text style={oc.actTxt}>PDF</Text>
+        </Pressable>
+        <Pressable style={[oc.actBtn, { backgroundColor: C.red }]}
+          onPress={() => onDelete && onDelete(orderId, order)}>
+          <Icon name="delete-outline" size={12} color={C.white} />
+          <Text style={oc.actTxt}>Delete</Text>
         </Pressable>
       </View>
     </View>
@@ -1633,6 +1696,12 @@ const oc = StyleSheet.create({
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, flexShrink: 0 },
   statusDot:   { width: 6, height: 6, borderRadius: 3 },
   statusTxt:   { fontSize: 9, fontWeight: '900', textTransform: 'uppercase' },
+  // Invoice banner — shown when invoice is generated for this order
+  invBanner:   { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.greenBg, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 6, borderWidth: 1, borderColor: '#A5D6B0' },
+  invBannerNo: { flex: 1, fontSize: 12, fontWeight: '800', color: C.green },
+  invBannerAmt:{ fontSize: 12, fontWeight: '900', color: C.green },
+  invCountChip:{ backgroundColor: '#fff', borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2 },
+  invCountTxt: { fontSize: 9, fontWeight: '800', color: C.green },
   dealerRow:   { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10, backgroundColor: '#F0F4FF', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   dealerName:  { fontSize: 12, fontWeight: '800', color: C.blue, flex: 1 },
   dealerSep:   { color: C.muted, fontSize: 12 },
@@ -1679,22 +1748,9 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
   }, []);
 
   // ── Load persisted local orders on mount ─────────────────────────────────
-  useEffect(() => {
-    if (!AsyncStorage) return;
-    AsyncStorage.getItem(ORDERS_STORAGE_KEY)
-      .then(raw => {
-        if (!raw) return;
-        const saved = JSON.parse(raw);
-        if (Array.isArray(saved) && saved.length > 0) {
-          setOrders(prev => {
-            const existing = new Set(prev.map(o => o.orderId || o.id).filter(Boolean));
-            const toAdd = saved.filter(o => !existing.has(o.orderId || o.id));
-            return [...toAdd, ...prev];
-          });
-        }
-      })
-      .catch(() => {});
-  }, []);
+  // NOTE: Disabled — orders should not pre-populate from local storage.
+  // All orders are fetched fresh from the backend on every load.
+  // useEffect(() => { ... }, []);
 
   // Derived: filter orders locally by search + active status tab
   const filteredOrders = React.useMemo(() => {
@@ -1722,6 +1778,8 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
         limit: 100,
       });
       if (res?.success) {
+        // Backend now strictly filters by dealerId — only this dealer's orders come back.
+        // Keep only DealerApp-sourced orders as an extra safety guard.
         const fetched = (res.data || []).filter(o => !o.source || o.source === 'DealerApp');
         setOrders(prev => {
           const apiIds = new Set(fetched.map(o => o.orderId || o.id).filter(Boolean));
@@ -1733,7 +1791,6 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
             const key = o.orderId || o.id;
             if (!key || !seen.has(key)) { seen.add(key); merged.push(o); }
           }
-          // Persist local orders so they survive reload
           persistOrders(merged);
           return merged;
         });
@@ -1748,15 +1805,10 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
 
   const handleTrack = (orderId, order) => {
     if (onNavigateToDispatch) {
-      // Pass the real orderId + order so Dispatch Tracking shows this specific order's timeline
+      // Navigate to Dispatch & Tracking page with this order's data
       onNavigateToDispatch(orderId, order);
-    } else {
-      Alert.alert(
-        `Order Status: ${order?.status || 'Unknown'}`,
-        `Order ID: ${orderId}\nDate: ${fmtDate(order?.createdAt || order?.orderDate)}\nAmount: ${fmtAmt(order || {})}`,
-        [{ text: 'OK' }]
-      );
     }
+    // No fallback alert — Track button always goes to Dispatch & Tracking
   };
 
   const handlePlaceOrder = async (order) => {
