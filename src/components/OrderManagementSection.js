@@ -402,9 +402,10 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
         const prods = stockRes?.data || [];
 
         // Load vendors from /procurement/vendors
+        // Vendor model uses companyName as the primary name field
         const vendorList = vendors.map(v => ({
-          id: v.id || v._id,
-          name: v.name || v.companyName || v.vendorName || v.businessName
+          id: String(v._id || v.id || ''),
+          name: v.companyName || v.name || v.vendorName || v.businessName || '',
         })).filter(v => v.id && v.name);
         console.log('Vendor list to set in companies:', vendorList);
         

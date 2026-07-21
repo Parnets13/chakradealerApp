@@ -166,8 +166,15 @@ const normalizeReturn = raw => {
     // Backend MaterialReturn model stores the human-readable order ID as `orderNo`
     // The POST payload sends it as `orderId`, and optimistic inserts may have either
     orderNo:        raw.orderNo || raw.orderId || raw.order_no || raw.orderMongoId || '—',
+    invoiceNo:      raw.invoiceNo || '—',
     productName:    raw.productName || raw.name || '—',
+    productId:      raw.productId  || '',
+    skuCode:        raw.skuCode    || raw.sku  || '',
+    category:       raw.category   || '',
+    dealerName:     raw.dealerName || raw.customerName || '',
+    companyName:    raw.companyName || raw.supplierName || '',
     returnQty:      raw.returnQty ?? raw.qty ?? raw.quantity ?? '—',
+    orderedQty:     raw.orderedQty || raw.ordered_qty || 0,
     reason:         raw.reason || raw.reasons || '—',
     returnDate:     raw.returnDate || raw.createdAt || new Date().toISOString(),
     approvalStatus: raw.approvalStatus || 'Pending',
@@ -433,21 +440,24 @@ function ReturnDetailModal({ item, visible, onClose }) {
   }, [item.photoUrl]);
 
   const rows = [
-    ['MR / Docket ID', item.mrId],
-    ['Order No',       item.orderNo],
-    ['Invoice No',     item.invoiceNo],
-    ['Product',        item.productName],
-    ['SKU',            item.skuCode],
-    ['Qty Returned',   item.returnQty],
-    ['Ordered Qty',    item.orderedQty],
-    ['Unit Price',     item.unitPrice ? fmtCurrency(item.unitPrice) : null],
-    ['Return Value',   item.value     ? fmtCurrency(item.value)     : null],
-    ['Reason',         item.reason],
-    ['Remarks',        item.remarks],
-    ['Docket ID',      item.docketId && item.docketId !== 'PENDING' ? item.docketId : null],
-    ['Credit Note',    item.creditNoteNo],
-    ['Debit Note',     item.debitNoteNo],
-    ['Raised On',      fmtDate(item.returnDate || item.createdAt)],
+    ['Return Request #', item.mrId],
+    ['Order No',         item.orderNo],
+    ['Invoice No',       item.invoiceNo],
+    ['Product',          item.productName],
+    ['SKU',              item.skuCode],
+    ['Category',         item.category],
+    ['Qty Returned',     item.returnQty],
+    ['Ordered Qty',      item.orderedQty],
+    ['Unit Price',       item.unitPrice ? fmtCurrency(item.unitPrice) : null],
+    ['Return Value',     item.value     ? fmtCurrency(item.value)     : null],
+    ['Company',          item.companyName || item.supplierName],
+    ['Dealer Name',      item.dealerName  || item.customerName],
+    ['Reason',           item.reason],
+    ['Remarks',          item.remarks],
+    ['Docket ID',        item.docketId && item.docketId !== 'PENDING' ? item.docketId : null],
+    ['Credit Note',      item.creditNoteNo],
+    ['Debit Note',       item.debitNoteNo],
+    ['Raised On',        fmtDate(item.returnDate || item.createdAt)],
   ];
 
   return (
@@ -691,7 +701,7 @@ function ProductPickerModal({ visible, onClose, onSelect }) {
                     </View>
                     <View style={pp.metaRow}>
                       <Icon name="counter" size={10} color={C.muted} />
-                      <Text style={pp.metaTxt}>Ordered Qty: {item.quantity}</Text>
+                      <Text style={pp.metaTxt}>Ordered Qty: {item.orderedQty ?? item.quantity}</Text>
                       {item.orderDate ? (
                         <>
                           <Text style={pp.dot}>·</Text>
@@ -700,6 +710,18 @@ function ProductPickerModal({ visible, onClose, onSelect }) {
                         </>
                       ) : null}
                     </View>
+                    {item.invoiceNo ? (
+                      <View style={pp.metaRow}>
+                        <Icon name="file-document-outline" size={10} color={C.muted} />
+                        <Text style={pp.metaTxt}>Invoice: {item.invoiceNo}</Text>
+                        {item.category ? (
+                          <>
+                            <Text style={pp.dot}>·</Text>
+                            <Text style={pp.metaTxt}>{item.category}</Text>
+                          </>
+                        ) : null}
+                      </View>
+                    ) : null}
                   </View>
 
                   {/* Price + chevron */}
@@ -855,11 +877,16 @@ function NewReturnModal({ visible, onClose, onSubmitted }) {
       orderId:      safeOrderId,
       orderMongoId: product.orderMongoId || '',
       productName:  safeProductName,
+      productId:    product.productId ? String(product.productId) : '',
       sku:          product.sku || '',
+      category:     product.category || '',
       orderedQty:   product.quantity || qty,
       returnQty:    qty,
       reason:       combinedReason,
       remarks:      remarks.trim(),
+      invoiceNo:    product.invoiceNo || '',
+      dealerName:   product.dealerName || '',
+      companyName:  product.companyName || '',
       unitPrice:    product.unitPrice || 0,
       value:        (product.unitPrice || 0) * qty,
       // localPhotoUri is for optimistic card display only — not sent to server
@@ -960,15 +987,22 @@ function NewReturnModal({ visible, onClose, onSubmitted }) {
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
               {/* ── Product selector ── */}
-              <Text style={nf.label}>Product <Text style={{ color: C.primary }}>*</Text></Text>
+              <Text style={nf.label}>Product / Order <Text style={{ color: C.primary }}>*</Text></Text>
               <Pressable style={nf.productBtn} onPress={() => setShowPicker(true)}>
                 {product ? (
                   <View style={{ flex: 1 }}>
                     <Text style={nf.productBtnName} numberOfLines={1}>{product.productName}</Text>
                     <Text style={nf.productBtnMeta}>
-                      Order: {product.orderId}  ·  Ordered Qty: {product.quantity}
+                      Order: {product.orderId}  ·  Qty: {product.orderedQty ?? product.quantity}
                       {product.orderDate ? `  ·  ${fmtDate(product.orderDate)}` : ''}
                     </Text>
+                    {(product.invoiceNo || product.category) ? (
+                      <Text style={nf.productBtnMeta}>
+                        {product.invoiceNo ? `Invoice: ${product.invoiceNo}` : ''}
+                        {product.invoiceNo && product.category ? '  ·  ' : ''}
+                        {product.category ? product.category : ''}
+                      </Text>
+                    ) : null}
                   </View>
                 ) : (
                   <Text style={nf.productPlaceholder}>Tap to select a product…</Text>
@@ -1265,10 +1299,17 @@ export default function ReturnsPage({ onBack }) {
     const optimistic = normalizeReturn({
       ...data,
       // Preserve form fields that the backend response might not echo back
-      orderNo:     data?.orderNo || formPayload?.orderId || '—',
+      orderNo:     data?.orderNo     || formPayload?.orderId     || '—',
+      invoiceNo:   data?.invoiceNo   || formPayload?.invoiceNo   || '—',
       productName: data?.productName || formPayload?.productName || '—',
-      returnQty:   data?.returnQty  ?? formPayload?.returnQty ?? '—',
-      reason:      data?.reason     || formPayload?.reason    || '—',
+      productId:   data?.productId   || formPayload?.productId   || '',
+      skuCode:     data?.skuCode     || formPayload?.sku         || '',
+      category:    data?.category    || formPayload?.category    || '',
+      dealerName:  data?.dealerName  || formPayload?.dealerName  || '',
+      companyName: data?.companyName || formPayload?.companyName || '',
+      returnQty:   data?.returnQty   ?? formPayload?.returnQty   ?? '—',
+      orderedQty:  data?.orderedQty  ?? formPayload?.orderedQty  ?? 0,
+      reason:      data?.reason      || formPayload?.reason      || '—',
       _id:         data?._id || data?.mrId || `temp_${Date.now()}`,
       createdAt:   data?.createdAt || new Date().toISOString(),
       // Use local photo URI so thumbnail shows immediately before server refreshes
