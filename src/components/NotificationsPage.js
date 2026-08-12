@@ -1,8 +1,9 @@
 import React, {useState, useEffect} from 'react';
-import {Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator, RefreshControl, Alert} from 'react-native';
+import {Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator, RefreshControl} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {colors, shadow} from './theme';
 import dealerService from './services/dealerService';
+import apiService from './services/apiService';
 
 function NotificationsPage({onBack}) {
   const [notifications, setNotifications] = useState([]);
@@ -16,19 +17,15 @@ function NotificationsPage({onBack}) {
   const loadNotifications = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/dealer/notifications');
-      if (response.data.success) {
-        setNotifications(response.data.data || []);
+      const response = await apiService.get('/notifications');
+      if (response.success) {
+        setNotifications(response.data || []);
+      } else {
+        setNotifications([]);
       }
     } catch (error) {
       console.error('Error loading notifications:', error);
-      // Fallback to static data if API fails
-      setNotifications([
-        {id: 1, type: 'order', title: 'Order Dispatched', desc: 'Your order ORD-2026-4821 has been dispatched', time: '2 hours ago', read: false, createdAt: new Date()},
-        {id: 2, type: 'payment', title: 'Payment Due', desc: 'Payment of ₹2,45,000 is due in 12 days', time: '5 hours ago', read: false, createdAt: new Date()},
-        {id: 3, type: 'offer', title: 'Special Offer', desc: '20% off on bulk orders this week', time: '1 day ago', read: true, createdAt: new Date()},
-        {id: 4, type: 'order', title: 'Order Delivered', desc: 'Order ORD-2026-4790 delivered successfully', time: '2 days ago', read: true, createdAt: new Date()},
-      ]);
+      setNotifications([]);
     } finally {
       setLoading(false);
     }
@@ -42,7 +39,7 @@ function NotificationsPage({onBack}) {
 
   const markAsRead = async (notificationId) => {
     try {
-      await api.put(`/dealer/notifications/${notificationId}/read`);
+      await apiService.put(`/notifications/${notificationId}/read`, {});
       setNotifications(prev => 
         prev.map(n => n.id === notificationId ? {...n, read: true} : n)
       );
@@ -53,12 +50,28 @@ function NotificationsPage({onBack}) {
 
   const markAllAsRead = async () => {
     try {
-      await api.put('/dealer/notifications/read-all');
-      setNotifications(prev => prev.map(n => ({...n, read: true})));
-      Alert.alert('Success', 'All notifications marked as read');
+      await apiService.put('/notifications/read-all', {});
     } catch (error) {
       console.error('Error marking all as read:', error);
     }
+    setNotifications(prev => prev.map(n => ({...n, read: true})));
+  };
+
+  const dismissNotification = async (notificationId) => {
+    // Remove from local state immediately for instant feedback
+    setNotifications(prev => prev.filter(n => n.id !== notificationId));
+    try {
+      await apiService.delete(`/notifications/${notificationId}`);
+    } catch (error) {
+      console.error('Error dismissing notification:', error);
+    }
+  };
+
+  const clearAllNotifications = () => {
+    setNotifications([]);
+    try {
+      apiService.delete('/notifications/clear-all').catch(() => {});
+    } catch (_) {}
   };
 
   const formatTime = (time) => {
@@ -170,12 +183,20 @@ function NotificationsPage({onBack}) {
             <Text style={styles.title}>Notifications</Text>
             <Text style={styles.subtitle}>Stay updated with latest alerts</Text>
           </View>
-          {unreadCount > 0 && (
-            <Pressable onPress={markAllAsRead} style={styles.markAllBtn}>
-              <Icon name="check-all" size={16} color={colors.red} />
-              <Text style={styles.markAllText}>All read</Text>
-            </Pressable>
-          )}
+          <View style={{flexDirection: 'row', gap: 8}}>
+            {unreadCount > 0 && (
+              <Pressable onPress={markAllAsRead} style={styles.markAllBtn}>
+                <Icon name="check-all" size={16} color={colors.red} />
+                <Text style={styles.markAllText}>All read</Text>
+              </Pressable>
+            )}
+            {notifications.length > 0 && (
+              <Pressable onPress={clearAllNotifications} style={styles.clearAllBtn}>
+                <Icon name="notification-clear-all" size={16} color="#888" />
+                <Text style={styles.clearAllText}>Clear all</Text>
+              </Pressable>
+            )}
+          </View>
         </View>
 
         {/* Stats bar */}
@@ -227,10 +248,18 @@ function NotificationsPage({onBack}) {
                     <View style={styles.notifContent}>
                       <View style={styles.notifTopRow}>
                         <Text style={styles.notifTitle}>{notif.title}</Text>
-                        <View style={[styles.typeBadge, {backgroundColor: getColor(notif.type) + '18'}]}>
-                          <Text style={[styles.typeBadgeText, {color: getColor(notif.type)}]}>
-                            {getTypeLabel(notif.type)}
-                          </Text>
+                        <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+                          <View style={[styles.typeBadge, {backgroundColor: getColor(notif.type) + '18'}]}>
+                            <Text style={[styles.typeBadgeText, {color: getColor(notif.type)}]}>
+                              {getTypeLabel(notif.type)}
+                            </Text>
+                          </View>
+                          <Pressable
+                            onPress={() => dismissNotification(notif.id)}
+                            hitSlop={10}
+                            style={styles.dismissBtn}>
+                            <Icon name="close" size={14} color="#AAAAAA" />
+                          </Pressable>
                         </View>
                       </View>
                       <Text style={styles.notifDesc}>{notif.desc || notif.message}</Text>
@@ -275,6 +304,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10,
   },
   markAllText: {color: colors.red, fontSize: 12, fontWeight: '700'},
+  clearAllBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#F0F0F0',
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10,
+  },
+  clearAllText: {color: '#888', fontSize: 12, fontWeight: '700'},
+  dismissBtn: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: '#F0F0F0',
+    alignItems: 'center', justifyContent: 'center',
+  },
 
   // ── Stats bar ──
   statsBar: {flexDirection: 'row', gap: 10, marginTop: 12},

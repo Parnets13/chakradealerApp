@@ -62,7 +62,6 @@ class ErrorBoundary extends React.Component {
 
 function App() {
   const [stage, setStage] = useState(APP_STAGE.SPLASH);
-  const [dashboardPage, setDashboardPage] = useState('home');
   const [isReady, setIsReady] = useState(false);
   const [dealerData, setDealerData] = useState(null);
   const [registeredName, setRegisteredName] = useState('');
@@ -140,24 +139,14 @@ function App() {
           return true;
         }
         if (stage === APP_STAGE.DASHBOARD) {
-          // If not on home page, go back to home
-          if (dashboardPage !== 'home') {
-            setDashboardPage('home');
-            return true;
-          }
-          // If on home page, show exit confirmation
+          // Dashboard handles its own back navigation internally
+          // Only intercept if we want to show exit confirmation when already at home
           Alert.alert(
             'Exit App',
             'Do you want to exit?',
             [
-              {
-                text: 'Cancel',
-                style: 'cancel',
-              },
-              {
-                text: 'Exit',
-                onPress: () => BackHandler.exitApp(),
-              },
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Exit', onPress: () => BackHandler.exitApp() },
             ],
             {cancelable: false}
           );
@@ -168,7 +157,7 @@ function App() {
     );
 
     return () => backHandler.remove();
-  }, [stage, dashboardPage]);
+  }, [stage]);
 
   if (!isReady) {
     return (
@@ -249,15 +238,12 @@ function App() {
                     dealer={dealerData || regFormData}
                     onLogout={async () => {
                       console.log('🚪 Logging out...');
-                      // Clear stored auth data
                       await apiService.removeToken().catch(() => {});
                       await dealerService.clearLocalProfile().catch(() => {});
                       setDealerData(null);
                       setRegFormData(null);
                       setStage(APP_STAGE.SPLASH);
                     }}
-                    activePage={dashboardPage}
-                    onPageChange={setDashboardPage}
                   />
                 )}
               </Stack.Screen>
