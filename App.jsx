@@ -3,6 +3,7 @@ import {BackHandler, StatusBar, Alert, View, Text, ActivityIndicator} from 'reac
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import SplashScreen from './src/components/SplashScreen';
 import WelcomeScreen from './src/components/WelcomeScreen';
@@ -24,7 +25,7 @@ const APP_STAGE = {
   DASHBOARD: 'dashboard',
 };
 
-const SPLASH_DURATION_MS = 3000;
+const SPLASH_DURATION_MS = 1500; // kept for reference
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -68,29 +69,41 @@ function App() {
   const [regFormData, setRegFormData] = useState(null); // registration form data for profile fallback
 
   useEffect(() => {
-    console.log('');
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log('🚀 DEALER APP STARTING...');
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log('Current Stage:', stage);
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log('');
-    
     setIsReady(true);
-    
+
     if (stage === APP_STAGE.SPLASH) {
-      const splashTimer = setTimeout(() => {
-        console.log('✅ Splash complete, moving to Welcome screen');
-        setStage(APP_STAGE.WELCOME);
-      }, SPLASH_DURATION_MS);
+      // Check if user is already logged in
+      const checkAuth = async () => {
+        try {
+          const [token, profileRaw] = await Promise.all([
+            AsyncStorage.getItem('authToken'),
+            AsyncStorage.getItem('dealerProfile'),
+          ]);
 
-      return () => clearTimeout(splashTimer);
+          await new Promise(r => setTimeout(r, 1500)); // show splash briefly
+
+          if (token) {
+            // Restore saved dealer profile so dashboard loads instantly
+            let savedDealer = null;
+            if (profileRaw) {
+              try { savedDealer = JSON.parse(profileRaw); } catch (_) {}
+            }
+            console.log('✅ Token found — auto-login to dashboard');
+            if (savedDealer) setDealerData(savedDealer);
+            setStage(APP_STAGE.DASHBOARD);
+          } else {
+            console.log('ℹ️  No token — going to Welcome');
+            setStage(APP_STAGE.WELCOME);
+          }
+        } catch (err) {
+          console.warn('Auth check error:', err);
+          setStage(APP_STAGE.WELCOME);
+        }
+      };
+      checkAuth();
     }
-  }, [stage]);
-
-  useEffect(() => {
-    console.log('📱 Stage changed to:', stage);
-  }, [stage]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Handle Android back button
   useEffect(() => {
