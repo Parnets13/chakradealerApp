@@ -9,10 +9,10 @@ const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !=
 // ────────────────────────────────────────────────────────────────
 // OPTION 1: LOCAL BACKEND (For Development)
 // ────────────────────────────────────────────────────────────────
-// Use your computer's actual IP address: 192.168.1.9
+// Use your computer's actual IP address: 192.168.1.26
 // Find your IP: Run "ipconfig" on Windows, "ifconfig" on Mac/Linux
 // NOTE: Backend runs on PORT 5000 (see chakraIndustries-backend/.env)
-const LOCAL_BACKEND_URL = 'http://192.168.1.9:5000/api/dealer';
+const LOCAL_BACKEND_URL = 'http://192.168.1.26:5000/api/dealer';
 
 // ────────────────────────────────────────────────────────────────
 // OPTION 2: PRODUCTION BACKEND (Always works)
@@ -23,7 +23,7 @@ const PRODUCTION_BACKEND_URL = 'https://chakraindustries-backend.onrender.com/ap
 // SELECT WHICH BACKEND TO USE
 // ────────────────────────────────────────────────────────────────
 // Change this to switch between local and production
-const USE_LOCAL_BACKEND = true;  // Set to false to use production
+const USE_LOCAL_BACKEND = true;  // Local backend has real Tally items + dealer accounts
 // Auto-select based on environment
 const getApiBaseURL = () => {
   if (!isDev) {
@@ -109,7 +109,7 @@ export const API_ENDPOINTS = {
   // Inventory
   INVENTORY: {
     LIST: '/inventory',
-    STOCK: '/inventory/stock',
+    STOCK: '/inventory/stock-items',
     PRODUCT: '/inventory/product/:productId'
   },
   

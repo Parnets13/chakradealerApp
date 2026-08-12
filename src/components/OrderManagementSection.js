@@ -18,6 +18,10 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 let apiService;
 try { apiService = require('./services/apiService').default; } catch (_) { apiService = null; }
 
+// ─── inventoryService (stock-items fetch with field normalisation) ────────────
+let inventoryService;
+try { inventoryService = require('./services/inventoryService').default; } catch (_) { inventoryService = null; }
+
 // ─── AsyncStorage for persisting local orders across reloads ─────────────────
 let AsyncStorage;
 try { AsyncStorage = require('@react-native-async-storage/async-storage').default; } catch (_) { AsyncStorage = null; }
@@ -339,17 +343,16 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
   const [selectedCompany,  setSelectedCompany]  = useState(null);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
 
-  // ── Product dropdowns: Category → Product → auto Product ID ──────────────
-  const [categories,        setCategories]        = useState([]);
-  const [products,          setProducts]          = useState([]);
-  const [selectedCategory,  setSelectedCategory]  = useState(null);
+  // ── Product search + list ─────────────────────────────────────────────────
+  const [allProducts,       setAllProducts]       = useState([]);   // full list from API
+  const [products,          setProducts]          = useState([]);   // filtered display list
+  const [productSearch,     setProductSearch]     = useState('');   // search box text
   const [selectedProduct,   setSelectedProduct]   = useState(null);
-  const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingProducts,   setLoadingProducts]   = useState(false);
+  const [showProductList,   setShowProductList]   = useState(false); // show dropdown list
 
   // Derived — auto-filled, read-only
   const productName  = selectedProduct?.name     || '';
-  const categoryName = selectedProduct?.category || selectedCategory?.name || '';
   const productId    = selectedProduct?.id       || selectedProduct?._id   || '';
 
   // ── Form fields ───────────────────────────────────────────────────────────
@@ -381,99 +384,113 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
   const gst = hasPrice ? +((sub * gstN) / 100).toFixed(2) : 0;
   const tot = +(sub + gst).toFixed(2);
 
+  // ── Extract brand/company from item name (first word = brand) ─────────────
+  // "Maharaja Garment Steamer Pure Pop Red" → "Maharaja"
+  // Works for any item — no hardcoding.
+  const detectCompany = (name = '') => {
+    const cleaned = name.trim();
+    if (!cleaned) return null;
+    const firstWord = cleaned.split(/\s+/)[0];
+    return firstWord.length > 1 ? firstWord : null;
+  };
 
-
-  // ── Load all data (companies, categories, products) ──
+  // ── Load all stock items from /inventory/stock-items ──────────────────────
   const loadAllData = () => {
-    if (!apiService) return;
-    setLoadingCompanies(true);
-    setLoadingCategories(true);
+    if (!inventoryService && !apiService) return;
     setLoadingProducts(true);
+    setLoadingCompanies(true);
 
-    // Fetch vendors from /procurement/vendors and stock items from /inventory/stock-items
-    Promise.all([
-      apiService.get('/procurement/vendors').catch(() => ({ data: [] })),
-      apiService.get('/inventory/stock-items').catch(() => ({ data: [] }))
-    ])
-      .then(([vendorsRes, stockRes]) => {
-        console.log('Vendors API response:', vendorsRes);
-        const vendors = vendorsRes?.data || [];
-        console.log('Vendors array:', vendors);
-        const prods = stockRes?.data || [];
+    const fetchFn = inventoryService
+      ? inventoryService.getStockItems()
+      : apiService.get('/inventory/stock-items');
 
-        // Load vendors from /procurement/vendors
-        // Vendor model uses companyName as the primary name field
-        const vendorList = vendors.map(v => ({
-          id: String(v._id || v.id || ''),
-          name: v.companyName || v.name || v.vendorName || v.businessName || '',
-        })).filter(v => v.id && v.name);
-        console.log('Vendor list to set in companies:', vendorList);
-        
-        // If no vendors from API, fall back to extracting from products
-        if (vendorList.length === 0) {
-          const uniqueVendors = [];
-          const seenVendors = new Set();
-          prods.forEach(p => {
-            const v = p.vendor || p.vendorName || p.manufacturer || '';
-            if (v && !seenVendors.has(v)) {
-              seenVendors.add(v);
-              uniqueVendors.push({ id: v, name: v });
-            }
-          });
-          setCompanies(uniqueVendors);
-        } else {
-          setCompanies(vendorList);
-          console.log('Companies state set to:', vendorList);
-        }
+    fetchFn
+      .then(r => {
+        const prods = r?.data || [];
+        setAllProducts(prods);
+        setProducts(prods);
 
-        // Load unique categories
-        const uniqueCats = [];
-        const seenCats = new Set();
+        // Build unique company list from first word of each item name
+        const seen = new Set();
+        const companyList = [];
         prods.forEach(p => {
-          const c = p.category || p.categoryName || '';
-          if (c && !seenCats.has(c)) {
-            seenCats.add(c);
-            uniqueCats.push({ id: c, name: c });
+          const brand = detectCompany(p.name || p.itemName || '');
+          if (brand && !seen.has(brand.toLowerCase())) {
+            seen.add(brand.toLowerCase());
+            companyList.push({ id: brand, name: brand });
           }
         });
-        setCategories(uniqueCats);
-
-        // Load products
-        setProducts(prods);
+        // Sort alphabetically
+        companyList.sort((a, b) => a.name.localeCompare(b.name));
+        setCompanies(companyList);
       })
       .catch(() => {
-        setCompanies([]);
-        setCategories([]);
+        setAllProducts([]);
         setProducts([]);
+        setCompanies([]);
       })
       .finally(() => {
-        setLoadingCompanies(false);
-        setLoadingCategories(false);
         setLoadingProducts(false);
+        setLoadingCompanies(false);
       });
   };
 
-  // ── Load products (optionally filtered by company) ──
-  const loadProducts = () => {
-    if (!apiService) return;
-    setLoadingProducts(true);
-    apiService.get('/inventory/stock-items')
-      .then(r => {
-        let prods = r?.data || [];
-        if (selectedCompany?.id) {
-          // Filter products by vendor if company selected
-          prods = prods.filter(p => 
-            (p.vendorId && String(p.vendorId) === String(selectedCompany.id)) ||
-            (p.vendor && p.vendor === selectedCompany.name)
-          );
-        }
-        setProducts(prods);
-      })
-      .catch(() => setProducts([]))
-      .finally(() => setLoadingProducts(false));
+  // ── Company selected → filter products by that company ───────────────────
+  const handleCompanySelect = (company) => {
+    setSelectedCompany(company);
+    setSelectedProduct(null);
+    setProductSearch('');
+    setShowProductList(false);
+    // Filter all products whose name starts with this company
+    const filtered = allProducts.filter(p => {
+      const brand = detectCompany(p.name || p.itemName || '');
+      return brand && brand.toLowerCase() === company.name.toLowerCase();
+    });
+    setProducts(filtered);
   };
 
-  // ── Invoice count for selected product ──────────────────────────────────
+  // ── Live search filter (respects selected company) ────────────────────────
+  const handleProductSearch = (text) => {
+    setProductSearch(text);
+    setShowProductList(true);
+    // Base list: if company selected, only that company's items; else all
+    const base = selectedCompany
+      ? allProducts.filter(p => {
+          const brand = detectCompany(p.name || p.itemName || '');
+          return brand && brand.toLowerCase() === selectedCompany.name.toLowerCase();
+        })
+      : allProducts;
+    if (!text.trim()) {
+      setProducts(base);
+      return;
+    }
+    const q = text.toLowerCase();
+    setProducts(
+      base.filter(p =>
+        (p.name || p.itemName || '').toLowerCase().includes(q) ||
+        (p.sku  || p.itemCode || '').toLowerCase().includes(q)
+      )
+    );
+  };
+
+  // ── Product selected → auto-fill all fields from Tally/ERP data ──────────
+  const handleProductSelect = (prod) => {
+    setSelectedProduct(prod);
+    setProductSearch(prod.name || prod.itemName || '');
+    setShowProductList(false);
+
+    // Price from Tally/ERP — unitPrice or sellingPrice, no manual entry
+    const autoPrice = prod.unitPrice ?? prod.sellingPrice ?? prod.price ?? prod.basePrice ?? 0;
+    const autoGst   = prod.gst ?? prod.gstPercent ?? 0;
+    const autoDisc  = prod.discountPercentage ?? prod.discount ?? 0;
+    const autoMoq   = prod.moq ?? prod.minQuantity ?? prod.minQty ?? 1;
+    setUnitPrice(autoPrice > 0 ? String(autoPrice) : '');
+    setGstPct(autoGst > 0 ? String(autoGst) : '');
+    setDiscount(autoDisc > 0 ? String(autoDisc) : '');
+    setQty(String(autoMoq));
+  };
+
+  // ── Invoice count for selected product ────────────────────────────────────
   const [productInvoiceInfo, setProductInvoiceInfo] = useState(null);
   const [loadingProductInv,  setLoadingProductInv]  = useState(false);
 
@@ -484,7 +501,6 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
     const pid = selectedProduct._id || selectedProduct.id || '';
     if (!sku && !pid) return;
     setLoadingProductInv(true);
-    // Fetch invoices linked to this product via its SKU or productId
     apiService.get('/invoices', { ...(sku ? { sku } : { productId: pid }), limit: 50 })
       .then(r => {
         const list = r?.data || [];
@@ -500,9 +516,9 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
   }, [selectedProduct]);
 
   const reset = () => {
-    setSelectedCompany(null); setCompanies([]);
-    setSelectedCategory(null); setSelectedProduct(null);
-    setCategories([]); setProducts([]);
+    setSelectedCompany(null);
+    setAllProducts([]); setProducts([]); setProductSearch('');
+    setSelectedProduct(null); setShowProductList(false);
     setProductInvoiceInfo(null);
     setQty(''); setUnitPrice(''); setDiscount(''); setGstPct('');
     setPayMode(''); setAddress(''); setCity(''); setStateName(''); setPincode('');
@@ -516,53 +532,9 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
     loadAllData();
   }, [visible]);
 
-  // Category selected → reload products for that category, clear product
-  const handleCategorySelect = (cat) => {
-    setSelectedCategory(cat);
-    setSelectedProduct(null);
-    // Filter products by category name
-    apiService.get('/inventory/stock-items')
-      .then(r => {
-        let prods = r?.data || [];
-        if (cat?.name) {
-          prods = prods.filter(p => (p.category || p.categoryName || '') === cat.name);
-        }
-        setProducts(prods);
-      })
-      .catch(() => setProducts([]));
-  };
-
-  // Product selected → auto-fill price/gst/discount/qty from product data + sync category
-  const handleProductSelect = (prod) => {
-    setSelectedProduct(prod);
-    // Price: sellingPrice > price > basePrice > unitPrice
-    const autoPrice = prod.sellingPrice ?? prod.price ?? prod.basePrice ?? prod.unitPrice ?? 0;
-    // GST
-    const autoGst   = prod.gst ?? prod.gstPercent ?? 0;
-    // Discount
-    const autoDisc  = prod.discountPercentage ?? prod.discount ?? 0;
-    // MOQ/min quantity as default qty
-    const autoMoq   = prod.moq ?? prod.minQuantity ?? prod.minQty ?? 1;
-
-    setUnitPrice(autoPrice > 0 ? String(autoPrice) : '');
-    setGstPct(autoGst > 0 ? String(autoGst) : '');
-    setDiscount(autoDisc > 0 ? String(autoDisc) : '');
-    // Auto-set qty to MOQ (minimum order quantity), user can change
-    setQty(String(autoMoq));
-
-    // Sync category
-    if (prod.category) {
-      const match = categories.find(c =>
-        c.name === prod.category || c.id === prod.categoryId || String(c._id) === String(prod.categoryId)
-      );
-      if (match) setSelectedCategory(match);
-    }
-  };
-
   const handleSubmit = async () => {
     if (!productName.trim()) { Alert.alert('Validation', 'Please select a Product.');        return; }
     if (!qty || qtyN < 1)    { Alert.alert('Validation', 'Enter a valid quantity (min 1).'); return; }
-    if (!payMode)            { Alert.alert('Validation', 'Please select a Payment Mode.');   return; }
 
     setSaving(true);
     const now      = new Date().toISOString();
@@ -610,7 +582,7 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
     const lineItem = {
       productId,
       name:       productName,
-      category:   categoryName || '—',
+      category:   '',
       sku:        selectedProduct?.sku || '',
       quantity:   qtyN,
       unitPrice:  priceN,
@@ -630,7 +602,7 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
       mobile:               dealerInfo.mobile,
       email:                dealerInfo.email,
       company:              selectedCompany?.name || '',
-      _categoryName:        categoryName || '—',
+      _categoryName:        '',
       _vendorName:          selectedCompany?.name || dealerInfo.name,
       _packSize:            unit,
       status:               savedOrder?.status || 'Order Placed',
@@ -682,162 +654,149 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 48 }}>
 
             {/* ── Product Selection ──────────────────────────────────────────── */}
-            <Sec title="Product Selection" icon="">
-              {/* 0. Company dropdown */}
+            <Sec title="Product Selection" icon="package-search">
+
+              {/* STEP 1: Select Company */}
               <SDropdown
-                label="COMPANY / BRAND"
+                label="SELECT COMPANY / BRAND *"
                 placeholder={loadingCompanies ? 'Loading companies…' : 'Select company…'}
                 value={selectedCompany?.id || ''}
                 items={companies}
                 keyField="id"
                 labelField="name"
                 loading={loadingCompanies}
-                onSelect={c => {
-                  setSelectedCompany(c);
-                  setSelectedCategory(null);
-                  setSelectedProduct(null);
-                  loadProducts();
-                }}
+                onSelect={handleCompanySelect}
               />
-              {/* 1. Category dropdown */}
-              <SDropdown
-                label="CATEGORY"
-                placeholder="Select a category…"
-                value={selectedCategory?.id || ''}
-                items={categories}
-                keyField="id"
-                labelField="name"
-                loading={loadingCategories}
-                onSelect={handleCategorySelect}
-              />
-              {/* 2. Product Name — filters after category selected */}
-              <SDropdown
-                label="PRODUCT NAME *"
-                placeholder={loadingProducts ? 'Loading products…' : 'Select a product…'}
-                value={selectedProduct?.id || selectedProduct?._id || ''}
-                items={products}
-                keyField="id"
-                labelField="name"
-                loading={loadingProducts}
-                onSelect={handleProductSelect}
-              />
-              {/* Auto-filled product details */}
-              {selectedProduct && (
-                <View style={{ backgroundColor: '#F8F9FA', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: C.line, marginTop: 4 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '900', color: C.red, letterSpacing: 0.5, marginBottom: 10 }}>PRODUCT DETAILS (AUTO-FILLED)</Text>
 
-                  {/* Product Name — prominent */}
+              {/* STEP 2: Search & Select Product (only after company selected) */}
+              {selectedCompany && (
+                <>
+                  <Lbl t="SEARCH & SELECT PRODUCT *" />
+                  <View style={{ position: 'relative', zIndex: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: selectedProduct ? C.red : C.line, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, backgroundColor: C.white, gap: 8 }}>
+                      <Icon name="magnify" size={17} color={C.muted} />
+                      <TextInput
+                        style={{ flex: 1, fontSize: 14, color: C.text }}
+                        value={productSearch}
+                        onChangeText={handleProductSearch}
+                        onFocus={() => { setShowProductList(true); if (!productSearch) setProducts(allProducts.filter(p => detectCompany(p.name || p.itemName || '')?.toLowerCase() === selectedCompany.name.toLowerCase())); }}
+                        placeholder={loadingProducts ? 'Loading…' : `Search ${selectedCompany.name} products…`}
+                        placeholderTextColor={C.muted}
+                        returnKeyType="search"
+                      />
+                      {loadingProducts && <ActivityIndicator size="small" color={C.red} />}
+                      {productSearch.length > 0 && !loadingProducts && (
+                        <Pressable onPress={() => { setProductSearch(''); setSelectedProduct(null); handleCompanySelect(selectedCompany); setShowProductList(false); }} hitSlop={8}>
+                          <Icon name="close-circle" size={16} color={C.muted} />
+                        </Pressable>
+                      )}
+                    </View>
+
+                    {/* Dropdown results */}
+                    {showProductList && products.length > 0 && (
+                      <View style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: C.white, borderRadius: 12, borderWidth: 1.5, borderColor: C.line, maxHeight: 240, zIndex: 999, marginTop: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 10, elevation: 8 }}>
+                        <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                          {products.slice(0, 40).map((prod, idx) => {
+                            const nm    = prod.name || prod.itemName || '—';
+                            const stock = prod.stock ?? prod.qty ?? prod.currentQuantity ?? 0;
+                            const price = prod.unitPrice ?? prod.sellingPrice ?? prod.price ?? 0;
+                            const isSelected = selectedProduct?.id === prod.id || selectedProduct?._id === prod._id;
+                            return (
+                              <Pressable
+                                key={String(prod.id || prod._id || idx)}
+                                style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: C.line, backgroundColor: isSelected ? '#FFF5F5' : C.white }}
+                                onPress={() => handleProductSelect(prod)}>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={{ fontSize: 13, fontWeight: '700', color: C.text }} numberOfLines={2}>{nm}</Text>
+                                  {prod.sku ? <Text style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>SKU: {prod.sku}</Text> : null}
+                                </View>
+                                <View style={{ alignItems: 'flex-end', marginLeft: 8 }}>
+                                  <Text style={{ fontSize: 12, fontWeight: '800', color: stock > 0 ? C.green : C.red }}>{stock} {prod.unit || 'pcs'}</Text>
+                                  {price > 0 ? <Text style={{ fontSize: 11, color: C.amber, fontWeight: '700' }}>₹{numFmt(price)}</Text> : null}
+                                </View>
+                                {isSelected && <Icon name="check-circle" size={16} color={C.red} style={{ marginLeft: 6 }} />}
+                              </Pressable>
+                            );
+                          })}
+                          {products.length === 0 && (
+                            <View style={{ padding: 20, alignItems: 'center' }}>
+                              <Text style={{ fontSize: 13, color: C.muted }}>No items found for {selectedCompany.name}</Text>
+                            </View>
+                          )}
+                        </ScrollView>
+                      </View>
+                    )}
+                    {showProductList && !loadingProducts && products.length === 0 && productSearch.length > 0 && (
+                      <View style={{ backgroundColor: C.white, borderRadius: 12, borderWidth: 1.5, borderColor: C.line, padding: 16, marginTop: 4, alignItems: 'center' }}>
+                        <Icon name="package-variant-closed-remove" size={24} color={C.muted} />
+                        <Text style={{ fontSize: 13, color: C.muted, marginTop: 6 }}>No products match "{productSearch}"</Text>
+                      </View>
+                    )}
+                  </View>
+                </>
+              )}
+
+              {!selectedCompany && !loadingCompanies && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.amberBg, borderRadius: 10, padding: 12, marginTop: 4 }}>
+                  <Icon name="information-outline" size={15} color={C.amber} />
+                  <Text style={{ flex: 1, fontSize: 12, color: C.amber, fontWeight: '600' }}>Select a company first to see its products</Text>
+                </View>
+              )}
+
+              {/* Auto-filled product details — shown after selection */}
+              {selectedProduct && (
+                <View style={{ backgroundColor: '#F8F9FA', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: C.line, marginTop: 10 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '900', color: C.red, letterSpacing: 0.5, marginBottom: 10 }}>PRODUCT DETAILS (FROM ERP / TALLY)</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF0F0', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 8 }}>
                     <Icon name="package-variant" size={14} color={C.red} />
                     <Text style={{ flex: 1, fontSize: 13, fontWeight: '800', color: C.text }}>{selectedProduct.name || '—'}</Text>
                   </View>
-
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-                    {/* Product ID */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF0F0', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
-                      <Icon name="identifier" size={11} color={C.red} />
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: C.text }}>ID: {selectedProduct.id || selectedProduct._id || '—'}</Text>
-                    </View>
-                    {/* SKU */}
                     {selectedProduct.sku ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.blueBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
                         <Icon name="barcode" size={11} color={C.blue} />
                         <Text style={{ fontSize: 11, fontWeight: '700', color: C.blue }}>SKU: {selectedProduct.sku}</Text>
                       </View>
                     ) : null}
-                    {/* Unit */}
                     {unit ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F3E5F5', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
                         <Icon name="package-up" size={11} color={C.purple} />
                         <Text style={{ fontSize: 11, fontWeight: '700', color: C.purple }}>Unit: {unit}</Text>
                       </View>
                     ) : null}
-                    {/* Stock — from /products (InventoryItem aggregated) */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: (selectedProduct.stock ?? 0) > 0 ? C.greenBg : '#FFF5F5', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
-                      <Icon name="warehouse" size={11} color={(selectedProduct.stock ?? 0) > 0 ? C.green : C.red} />
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: (selectedProduct.stock ?? 0) > 0 ? C.green : C.red }}>
-                        Stock: {selectedProduct.stock ?? selectedProduct.qty ?? '—'} {unit ? unit : ''}
-                      </Text>
-                    </View>
-                    {/* Stock Status */}
-                    {selectedProduct.stockStatus ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: selectedProduct.stockStatus === 'In Stock' ? C.greenBg : selectedProduct.stockStatus === 'Low Stock' ? C.amberBg : '#FFF5F5', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
-                        <Icon name={selectedProduct.stockStatus === 'In Stock' ? 'check-circle-outline' : selectedProduct.stockStatus === 'Low Stock' ? 'alert-circle-outline' : 'close-circle-outline'} size={11} color={selectedProduct.stockStatus === 'In Stock' ? C.green : selectedProduct.stockStatus === 'Low Stock' ? C.amber : C.red} />
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: selectedProduct.stockStatus === 'In Stock' ? C.green : selectedProduct.stockStatus === 'Low Stock' ? C.amber : C.red }}>{selectedProduct.stockStatus}</Text>
-                      </View>
-                    ) : null}
-                    {/* Per Price — from backend sellingPrice */}
+                    {(() => {
+                      const stk = selectedProduct.stock ?? selectedProduct.qty ?? 0;
+                      return (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: stk > 0 ? C.greenBg : '#FFF5F5', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
+                          <Icon name="warehouse" size={11} color={stk > 0 ? C.green : C.red} />
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: stk > 0 ? C.green : C.red }}>Stock: {stk} {unit || 'pcs'}</Text>
+                        </View>
+                      );
+                    })()}
                     {priceN > 0 ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.amberBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
                         <Icon name="currency-inr" size={11} color={C.amber} />
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: C.amber }}>Per Price: ₹{numFmt(priceN)}</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: C.amber }}>Price: ₹{numFmt(priceN)}</Text>
                       </View>
                     ) : null}
-                    {/* GST */}
                     {gstN > 0 ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.tealBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
                         <Icon name="percent" size={11} color={C.teal} />
                         <Text style={{ fontSize: 11, fontWeight: '700', color: C.teal }}>GST: {gstN}%</Text>
                       </View>
                     ) : null}
-                    {/* Discount */}
                     {discN > 0 ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.greenBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
                         <Icon name="tag-percentage" size={11} color={C.green} />
                         <Text style={{ fontSize: 11, fontWeight: '700', color: C.green }}>Discount: {discN}%</Text>
                       </View>
                     ) : null}
-                    {/* MOQ */}
                     {(selectedProduct.moq ?? selectedProduct.minQuantity) ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.navyBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
                         <Icon name="counter" size={11} color={C.navy} />
                         <Text style={{ fontSize: 11, fontWeight: '700', color: C.navy }}>MOQ: {selectedProduct.moq ?? selectedProduct.minQuantity}</Text>
                       </View>
                     ) : null}
-                  </View>
-
-                  {/* ── Invoice info for this product ── */}
-                  <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 }}>
-                      <Icon name="file-document-outline" size={12} color={C.blue} />
-                      <Text style={{ fontSize: 11, fontWeight: '900', color: C.blue, letterSpacing: 0.4 }}>INVOICES FOR THIS PRODUCT</Text>
-                      {loadingProductInv && <ActivityIndicator size="small" color={C.blue} style={{ marginLeft: 4 }} />}
-                    </View>
-                    {!loadingProductInv && productInvoiceInfo === null && (
-                      <Text style={{ fontSize: 11, color: C.muted, fontWeight: '600' }}>Loading…</Text>
-                    )}
-                    {!loadingProductInv && productInvoiceInfo?.count === 0 && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F8F9FA', borderRadius: 7, paddingHorizontal: 10, paddingVertical: 6 }}>
-                        <Icon name="file-document-remove-outline" size={13} color={C.muted} />
-                        <Text style={{ fontSize: 11, color: C.muted, fontWeight: '600' }}>No invoices found for this product</Text>
-                      </View>
-                    )}
-                    {!loadingProductInv && productInvoiceInfo?.count > 0 && (
-                      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.blueBg, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 6 }}>
-                          <Icon name="receipt" size={12} color={C.blue} />
-                          <Text style={{ fontSize: 12, fontWeight: '800', color: C.blue }}>
-                            {productInvoiceInfo.count} Invoice{productInvoiceInfo.count > 1 ? 's' : ''}
-                          </Text>
-                        </View>
-                        {productInvoiceInfo.totalAmt > 0 && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.greenBg, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 6 }}>
-                            <Icon name="currency-inr" size={12} color={C.green} />
-                            <Text style={{ fontSize: 12, fontWeight: '800', color: C.green }}>
-                              Total: ₹{numFmt(productInvoiceInfo.totalAmt)}
-                            </Text>
-                          </View>
-                        )}
-                        {productInvoiceInfo.latest?.invoiceNo && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F3F4F6', borderRadius: 7, paddingHorizontal: 10, paddingVertical: 6 }}>
-                            <Icon name="file-document-check" size={12} color={C.muted} />
-                            <Text style={{ fontSize: 11, fontWeight: '700', color: C.sub }}>
-                              Latest: {productInvoiceInfo.latest.invoiceNo}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    )}
                   </View>
                 </View>
               )}
@@ -897,18 +856,6 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
                 </View>
               )}
             </Sec>
-            {/* Payment Mode */}
-            <Sec title="Payment Mode" icon="cash-multiple">
-              <View style={fm.chips}>
-                {PAY_MODES.map(m => (
-                  <Pressable key={m} style={[fm.chip, payMode === m && fm.chipOn]} onPress={() => setPayMode(payMode === m ? '' : m)}>
-                    <Icon name={m==='Cash'?'cash':m==='Credit'?'credit-card-outline':'bank-transfer'} size={14} color={payMode === m ? C.white : C.sub} />
-                    <Text style={[fm.chipTxt, payMode === m && fm.chipTxtOn]}>{m}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </Sec>
-
             {/* Order Date — single date picker only */}
             <Sec title="Order Date" icon="calendar-outline">
               <DatePicker label="ORDER DATE" value={orderDate} onChange={setOrderDate} />
@@ -1695,7 +1642,7 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
         </View>
       )}
 
-      {/* ── Action buttons: text labels, no icons ── */}
+      {/* ── Action buttons ── */}
       <View style={oc.actRow}>
         <Pressable style={[oc.actBtn, { backgroundColor: '#5B21B6' }]}
           onPress={() => onTrack && onTrack(orderId, order)}>
@@ -1722,6 +1669,71 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
           <Text style={oc.actTxt}>Place Order</Text>
         </Pressable>
       </View>
+
+      {/* ── Cancel + Delete row (destructive actions) ── */}
+      {(['Order Placed', 'Pending Approval', 'Cancelled'].includes(order.status)) && (
+        <View style={oc.dangerRow}>
+          {/* Cancel — only for active orders */}
+          {['Order Placed', 'Pending Approval'].includes(order.status) && (
+            <Pressable
+              style={oc.cancelBtn}
+              onPress={() => {
+                Alert.alert(
+                  'Cancel Order',
+                  `Cancel order ${orderId}?`,
+                  [
+                    { text: 'No', style: 'cancel' },
+                    {
+                      text: 'Yes, Cancel',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          const id = order.mongodbId || order._id || orderId;
+                          await apiService.post(`/orders/${id}/cancel`, { reason: 'Cancelled by dealer' });
+                          onDelete && onDelete(order, 'cancel');
+                        } catch (e) {
+                          Alert.alert('Error', e?.message || 'Failed to cancel order');
+                        }
+                      },
+                    },
+                  ]
+                );
+              }}>
+              <Icon name="close-circle-outline" size={13} color={C.red} />
+              <Text style={oc.cancelTxt}>Cancel Order</Text>
+            </Pressable>
+          )}
+
+          {/* Delete */}
+          <Pressable
+            style={oc.deleteBtn}
+            onPress={() => {
+              Alert.alert(
+                'Delete Order',
+                `Permanently delete order ${orderId}? This cannot be undone.`,
+                [
+                  { text: 'No', style: 'cancel' },
+                  {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        const id = order.mongodbId || order._id || orderId;
+                        await apiService.delete(`/orders/${id}`);
+                        onDelete && onDelete(order, 'delete');
+                      } catch (e) {
+                        Alert.alert('Error', e?.message || 'Failed to delete order');
+                      }
+                    },
+                  },
+                ]
+              );
+            }}>
+            <Icon name="trash-can-outline" size={13} color="#FFF" />
+            <Text style={oc.deleteTxt}>Delete</Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -1765,6 +1777,11 @@ const oc = StyleSheet.create({
   actRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.line, gap: 6, flexWrap: 'wrap' },
   actBtn:      { flex: 1, minWidth: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 8 },
   actTxt:      { color: C.white, fontSize: 10, fontWeight: '800', textAlign: 'center' },
+  dangerRow:   { flexDirection: 'row', gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#FEE2E2' },
+  cancelBtn:   { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 9, borderWidth: 1.5, borderColor: C.red, backgroundColor: '#FFF5F5' },
+  cancelTxt:   { color: C.red, fontSize: 11, fontWeight: '800' },
+  deleteBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, paddingHorizontal: 18, borderRadius: 9, backgroundColor: '#7F1D1D' },
+  deleteTxt:   { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -1893,26 +1910,31 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
     }
   };
 
-  const handleDelete = (orderId, order) => {
-    Alert.alert('Delete Order', `Delete order ${orderId}?\nThis cannot be undone.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive',
-        onPress: async () => {
-          setOrders(prev => {
-            const next = prev.filter(o => (o.orderId || o.id) !== orderId);
-            persistOrders(next);
-            return next;
-          });
-          if (apiService && !order?._isLocal) {
-            try {
-              const id = resolveId(order);
-              await apiService.delete(`/orders/${id}`);
-            } catch (_) {}
-          }
-        },
-      },
-    ]);
+  const handleDelete = (order, action = 'delete') => {
+    // Remove from local list immediately
+    const removeOrder = () => {
+      setOrders(prev => {
+        const orderId = order.orderId || order.id;
+        const next = prev.filter(o => (o.orderId || o.id) !== orderId && o.mongodbId !== order.mongodbId);
+        persistOrders(next);
+        return next;
+      });
+    };
+
+    if (action === 'cancel') {
+      // Already confirmed inside OrderCard — just update status in local list
+      setOrders(prev => {
+        const next = prev.map(o => {
+          const matches = (o.orderId || o.id) === (order.orderId || order.id) || o.mongodbId === order.mongodbId;
+          return matches ? { ...o, status: 'Cancelled' } : o;
+        });
+        persistOrders(next);
+        return next;
+      });
+    } else {
+      // Delete — already confirmed inside OrderCard
+      removeOrder();
+    }
   };
 
   const handleEditSaved = (updated) => {

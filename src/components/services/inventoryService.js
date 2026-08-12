@@ -34,12 +34,51 @@ const adminGet = async (path) => {
 };
 
 class InventoryService {
-  // ── Primary stock list (dealer route — proxies admin getAllInventory) ────────
+  // ── Primary stock list — GET /api/dealer/inventory/stock-items ──────────────
+  // Returns all InventoryItem records enriched with ItemMaster data.
+  // Used by: InventoryStockSection, OrderManagementSection (product picker)
   async getInventoryStock(params = {}) {
     try {
       const response = await apiService.get(API_ENDPOINTS.INVENTORY.STOCK, params);
       return response;
     } catch (error) {
+      throw error;
+    }
+  }
+
+  // ── Alias used by Place Order / Create Order product picker ──────────────────
+  // Fetches from /inventory/stock-items and normalises field names so
+  // the order form always gets consistent fields regardless of API version.
+  async getStockItems(params = {}) {
+    try {
+      const response = await apiService.get(API_ENDPOINTS.INVENTORY.STOCK, params);
+      if (response?.success && Array.isArray(response.data)) {
+        response.data = response.data.map(item => ({
+          ...item,
+          // ID
+          id:           item._id  || item.id,
+          // Name
+          name:         item.name || item.itemName || item.sku || '',
+          // SKU
+          sku:          item.sku  || item.itemCode || '',
+          // Stock qty
+          stock:        item.qty  ?? item.currentQuantity ?? item.available ?? 0,
+          // Price — from Tally STANDARDCOST stored as unitPrice/sellingPrice
+          price:        item.unitPrice || item.sellingPrice || 0,
+          unitPrice:    item.unitPrice || item.sellingPrice || 0,
+          sellingPrice: item.sellingPrice || item.unitPrice || 0,
+          // GST from ItemMaster
+          gst:          item.gst || 0,
+          gstPercent:   item.gst || 0,
+          // MOQ
+          moq:          item.moq || item.minQuantity || item.minQty || 1,
+          // Unit
+          unit:         item.unit || 'Nos',
+        }));
+      }
+      return response;
+    } catch (error) {
+      console.error('Error fetching stock items for order:', error);
       throw error;
     }
   }

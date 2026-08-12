@@ -178,7 +178,10 @@ function App() {
   if (stage === APP_STAGE.WELCOME) {
     return (
       <SafeAreaProvider>
-        <WelcomeScreen onRegister={() => setStage(APP_STAGE.REGISTRATION)} />
+        <WelcomeScreen
+          onRegister={() => setStage(APP_STAGE.REGISTRATION)}
+          onLogin={() => setStage(APP_STAGE.AUTH)}
+        />
       </SafeAreaProvider>
     );
   }

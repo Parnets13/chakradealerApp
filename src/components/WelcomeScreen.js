@@ -18,7 +18,7 @@ const DARK = '#1A1A1A';
 const GREY = '#6B7280';
 const GREY_LIGHT = '#F3F4F6';
 
-export default function WelcomeScreen({ onRegister }) {
+export default function WelcomeScreen({ onRegister, onLogin }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
 
@@ -66,7 +66,6 @@ export default function WelcomeScreen({ onRegister }) {
             
             <View style={styles.headingContainer}>
               <Text style={styles.headingCompany}>Sri Chakra Industries</Text>
-              <Text style={styles.headingApp}>Dealer App Registration</Text>
             </View>
           </View>
           
@@ -94,7 +93,12 @@ export default function WelcomeScreen({ onRegister }) {
           <Pressable style={styles.registerButton} onPress={onRegister}>
             <Text style={styles.registerButtonText}>New Registration →</Text>
           </Pressable>
-          
+
+          {/* Already registered — Login */}
+          <Pressable style={styles.loginButton} onPress={onLogin}>
+            <Text style={styles.loginButtonText}>Already Registered? Login here</Text>
+          </Pressable>
+
           <Text style={styles.footer}>
             Only authorized Sri Chakra Industries dealers can access this application.
           </Text>
@@ -140,14 +144,15 @@ const styles = StyleSheet.create({
   },
   textContainer: {
     width: '100%',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: 24
   },
   welcomeSubheading: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: DARK,
-    marginBottom: 6
+    fontSize: 22,
+    fontWeight: '700',
+    color: GREY,
+    marginBottom: 4,
+    textAlign: 'center',
   },
   headingContainer: {
     alignItems: 'center',
@@ -155,18 +160,11 @@ const styles = StyleSheet.create({
     width: '100%'
   },
   headingCompany: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '900',
     color: DARK,
     textAlign: 'center',
-    lineHeight: 26
-  },
-  headingApp: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: PRIMARY,
-    textAlign: 'center',
-    lineHeight: 20
+    lineHeight: 28
   },
   description: {
     fontSize: 14,
@@ -223,11 +221,44 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.2
   },
+  loginButton: {
+    borderWidth: 1.5,
+    borderColor: PRIMARY,
+    paddingVertical: 13,
+    paddingHorizontal: 36,
+    borderRadius: 14,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  loginButtonText: {
+    color: PRIMARY,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
   footer: {
     fontSize: 10,
     color: GREY,
     textAlign: 'center',
     lineHeight: 14,
     paddingHorizontal: 20
-  }
+  },
+  loginRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginBottom: 4,
+  },
+  loginRowText: {
+    fontSize: 13,
+    color: GREY,
+    fontWeight: '500',
+  },
+  loginRowLink: {
+    fontSize: 13,
+    color: PRIMARY,
+    fontWeight: '700',
+  },
 });
