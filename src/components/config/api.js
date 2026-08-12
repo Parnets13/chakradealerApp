@@ -23,7 +23,7 @@ const PRODUCTION_BACKEND_URL = 'https://chakraindustries-backend.onrender.com/ap
 // SELECT WHICH BACKEND TO USE
 // ────────────────────────────────────────────────────────────────
 // Change this to switch between local and production
-const USE_LOCAL_BACKEND = true;  // Local backend has real Tally items + dealer accounts
+const USE_LOCAL_BACKEND = false;  // Production — uses onrender.com with real Tally ItemMaster data
 // Auto-select based on environment
 const getApiBaseURL = () => {
   if (!isDev) {
