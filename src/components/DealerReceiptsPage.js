@@ -16,14 +16,14 @@ import {API_ENDPOINTS} from './config/api';
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const C = {
-  primary:      '#C8102E',
+  primary:      '#E8374A',
   primaryDark:  '#A0001C',
   primaryLight: '#FDEAED',
   success:      '#059669',
   successLight: '#D1FAE5',
   warning:      '#B45309',
   warningLight: '#FEF3C7',
-  danger:       '#DC2626',
+  danger:       '#F05252',
   dangerLight:  '#FEF2F2',
   info:         '#1565C0',
   infoLight:    '#E3F0FF',

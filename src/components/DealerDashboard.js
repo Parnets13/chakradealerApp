@@ -33,31 +33,38 @@ import OrderHistoryPage from './OrderHistoryPage';
 
 // ─── Design Tokens — Sri Chakra Industries Brand ─────────────────────────────
 const C = {
-  // Brand — Sri Chakra Industries
-  primary:      '#C8102E',   // Chakra Red (logo primary)
-  primaryDark:  '#A0001C',   // Chakra Dark Red (logo secondary)
-  primaryLight: '#FDEAED',   // Soft red tint for backgrounds
-  primaryMid:   '#E8112D',   // Mid red for accents
+  // Brand — Sri Chakra Industries (used sparingly as accent only)
+  primary:      '#E8374A',   // Chakra Red — accent only, not for large fills
+  primaryDark:  '#C8102E',
+  primaryLight: '#FFF0F2',   // Very soft blush — for icon bg tints
+  primaryMid:   '#E8112D',
 
-  success:      '#2E7D32',
-  successLight: '#E8F5E9',
-  warning:      '#E65100',
-  warningLight: '#FFF3E0',
-  danger:       '#B71C1C',
-  dangerLight:  '#FFEBEE',
-  info:         '#1565C0',
-  infoLight:    '#E3F0FF',
-  purple:       '#6A1B9A',
-  purpleLight:  '#F3E5F5',
-  teal:         '#00695C',
-  tealLight:    '#E0F2F1',
+  // Accent gradient for banner — deep navy/indigo feels premium, not eye-straining
+  bannerA:      '#1B2A4A',   // Deep navy start
+  bannerB:      '#243B6B',   // Indigo mid
+  bannerC:      '#1F3460',   // Navy end
 
-  bg:           '#F5F7FA',
+  success:      '#16A34A',
+  successLight: '#DCFCE7',
+  warning:      '#D97706',
+  warningLight: '#FEF3C7',
+  danger:       '#F05252',
+  dangerLight:  '#FEE2E2',
+  info:         '#2563EB',
+  infoLight:    '#DBEAFE',
+  purple:       '#7C3AED',
+  purpleLight:  '#EDE9FE',
+  teal:         '#0D9488',
+  tealLight:    '#CCFBF1',
+  orange:       '#EA580C',
+  orangeLight:  '#FFEDD5',
+
+  bg:           '#F1F4F8',   // Slightly blue-tinted neutral — professional
   card:         '#FFFFFF',
-  border:       '#E2E8F0',
-  text:         '#1A2332',
-  textSub:      '#4A5568',
-  muted:        '#718096',
+  border:       '#E4E9F0',
+  text:         '#0F172A',
+  textSub:      '#374151',
+  muted:        '#6B7280',
 };
 
 // ─── Nav Items ────────────────────────────────────────────────────────────────
@@ -72,7 +79,11 @@ const NAV_ITEMS = [
 // ─── Root Component ────────────────────────────────────────────────────────────
 function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange, dealer}) {
   const [activeTab, setActiveTab] = useState('home');
-  const [activePage, setActivePage] = useState(externalActivePage || 'home');
+  // ── Page history stack — supports proper back navigation ──────────────────
+  // e.g. home → profile → reports → back → profile → back → home
+  const [pageStack, setPageStack] = useState([externalActivePage || 'home']);
+  const activePage = pageStack[pageStack.length - 1];
+
   const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
   // Order ID + full order data to pass to Dispatch & Tracking from My Orders
   const [dispatchOrderId,   setDispatchOrderId]   = useState(null);
@@ -80,58 +91,84 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
 
   React.useEffect(() => {
     if (externalActivePage) {
-      setActivePage(externalActivePage);
+      setPageStack([externalActivePage]);
       if (NAV_ITEMS.map(n => n.id).includes(externalActivePage)) {
         setActiveTab(externalActivePage);
       }
     }
   }, [externalActivePage]);
 
+  // Push a new page onto the stack
   const handleNavigate = page => {
-    // If navigating back to home, refresh the dashboard
-    if (page === 'home' && activePage !== 'home') {
-      setDashboardRefreshKey(prev => prev + 1);
+    if (page === 'home') {
+      // Going home — reset stack entirely and refresh dashboard
+      if (activePage !== 'home') setDashboardRefreshKey(prev => prev + 1);
+      setPageStack(['home']);
+      setActiveTab('home');
+      if (onPageChange) onPageChange('home');
+      return;
     }
-    setActivePage(page);
+    // Bottom-nav tab taps always reset to a fresh stack for that tab
+    const isNavTab = NAV_ITEMS.map(n => n.id).includes(page);
+    if (isNavTab) {
+      setPageStack([page]);
+      setActiveTab(page);
+    } else {
+      // Sub-page push — remember where we came from
+      setPageStack(prev => [...prev, page]);
+    }
     if (onPageChange) onPageChange(page);
-    if (NAV_ITEMS.map(n => n.id).includes(page)) setActiveTab(page);
   };
 
-  // Called from OrdersPage "Track Order" button — go to dispatch page with that order highlighted
+  // Pop the stack — goes back to wherever we came from
+  const handleBack = () => {
+    setPageStack(prev => {
+      if (prev.length <= 1) {
+        setDashboardRefreshKey(k => k + 1);
+        return ['home'];
+      }
+      const next = prev.slice(0, -1);
+      const dest = next[next.length - 1];
+      if (NAV_ITEMS.map(n => n.id).includes(dest)) setActiveTab(dest);
+      if (onPageChange) onPageChange(dest);
+      return next;
+    });
+  };
+
+  // Called from OrdersPage "Track Order" button
   const handleTrackOrder = (orderId, order) => {
     setDispatchOrderId(orderId || null);
     setDispatchOrderData(order || null);
-    setActivePage('dispatch');
+    setPageStack(prev => [...prev, 'dispatch']);
     setActiveTab('dispatch');
     if (onPageChange) onPageChange('dispatch');
   };
 
   const isSubPage = activePage !== 'home';
-  const handleBackToHome = () => handleNavigate('home');
 
   if (isSubPage) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
-        <StatusBar barStyle="light-content" backgroundColor={C.primary} />
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <View style={styles.subPageContainer}>
-          {activePage === 'orders'        && <OrdersPage onBack={handleBackToHome} onNavigateToDispatch={handleTrackOrder} onViewInvoice={() => handleNavigate('invoices')} dealer={dealer} />}
-          {activePage === 'orderhistory'  && <OrderHistoryPage onBack={handleBackToHome} onNavigateToDispatch={handleTrackOrder} />}
-          {activePage === 'inventory'     && <InventoryPage onBack={handleBackToHome} />}
-          {activePage === 'dispatch'      && <DispatchTrackingPage onBack={() => { setDispatchOrderId(null); setDispatchOrderData(null); handleBackToHome(); }} initialOrderId={dispatchOrderId} initialOrder={dispatchOrderData} />}
-          {activePage === 'profile'       && <ProfilePage dealer={dealer} onLogout={onLogout} onBack={handleBackToHome} onNavigate={handleNavigate} />}
-          {activePage === 'ledger'        && <DealerLedgerPage onBack={handleBackToHome} />}
-          {activePage === 'returns'       && <ReturnsPage onBack={handleBackToHome} />}
-          {activePage === 'reports'       && <ReportsDashboardSection onBack={handleBackToHome} />}
-          {activePage === 'support'       && <SupportPage onBack={handleBackToHome} />}
-          {activePage === 'notifications' && <NotificationsPage onBack={handleBackToHome} />}
-          {activePage === 'category'      && <CategoryPage onBack={handleBackToHome} onCartPress={() => handleNavigate('cart')} />}
+          {activePage === 'orders'        && <OrdersPage onBack={handleBack} onNavigateToDispatch={handleTrackOrder} onViewInvoice={() => handleNavigate('invoices')} dealer={dealer} />}
+          {activePage === 'orderhistory'  && <OrderHistoryPage onBack={handleBack} onNavigateToDispatch={handleTrackOrder} />}
+          {activePage === 'inventory'     && <InventoryPage onBack={handleBack} />}
+          {activePage === 'dispatch'      && <DispatchTrackingPage onBack={() => { setDispatchOrderId(null); setDispatchOrderData(null); handleBack(); }} initialOrderId={dispatchOrderId} initialOrder={dispatchOrderData} />}
+          {activePage === 'profile'       && <ProfilePage dealer={dealer} onLogout={onLogout} onBack={handleBack} onNavigate={handleNavigate} />}
+          {activePage === 'ledger'        && <DealerLedgerPage onBack={handleBack} />}
+          {activePage === 'returns'       && <ReturnsPage onBack={handleBack} />}
+          {activePage === 'reports'       && <ReportsDashboardSection onBack={handleBack} />}
+          {activePage === 'support'       && <SupportPage onBack={handleBack} />}
+          {activePage === 'notifications' && <NotificationsPage onBack={handleBack} />}
+          {activePage === 'category'      && <CategoryPage onBack={handleBack} onCartPress={() => handleNavigate('cart')} />}
           {activePage === 'cart'          && <CartScreen onBack={() => handleNavigate('category')} onCheckout={(cart, grand, sub, gst) => { setCartData({ cart, grand, sub, gst }); handleNavigate('checkout'); }} />}
           {activePage === 'checkout'      && cartData && <CheckoutScreen cart={cartData.cart} grandTotal={cartData.grand} subTotal={cartData.sub} totalGst={cartData.gst} onBack={(target) => handleNavigate(target || 'cart')} onOrderSuccess={() => handleNavigate('orders')} onOrderFail={() => {}} />}
-          {activePage === 'invoices'      && <InvoicesPage onBack={handleBackToHome} />}
+          {activePage === 'invoices'      && <InvoicesPage onBack={handleBack} />}
 
         </View>
         <BottomNavigation activeTab={activeTab} onChange={tab => {
-          // Track tab directly tapped → clear any "from My Orders" order so List Mode shows
+          // Bottom-nav tap always resets to a clean stack for that tab
           if (tab === 'dispatch') {
             setDispatchOrderId(null);
             setDispatchOrderData(null);
@@ -145,7 +182,7 @@ function DealerDashboard({onLogout, activePage: externalActivePage, onPageChange
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <StatusBar barStyle="light-content" backgroundColor={C.primary} />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -223,11 +260,11 @@ function HomePage({onNavigate, refreshKey}) {
 
   // ── Quick Actions ──
   const quickActions = [
-    {id: 'orders',        label: 'My Orders',      icon: 'clipboard-list',    nav: 'orders',        color: C.success,     bg: C.successLight},
-    {id: 'orderhistory',  label: 'Order History',  icon: 'history',           nav: 'orderhistory',  color: C.purple,      bg: C.purpleLight},
-    {id: 'tracking',      label: 'Track Orders',   icon: 'truck-delivery',    nav: 'dispatch',      color: C.info,        bg: C.infoLight},
-    {id: 'ledger',        label: 'Ledger',         icon: 'book-open-variant', nav: 'ledger',        color: C.warning,     bg: C.warningLight},
-    {id: 'returns',       label: 'Returns',        icon: 'package-variant',   nav: 'returns',       color: C.teal,        bg: C.tealLight},
+    {id: 'orders',        label: 'My Orders',      icon: 'clipboard-list-outline', nav: 'orders',        color: C.info,        bg: C.infoLight},
+    {id: 'orderhistory',  label: 'Order History',  icon: 'history',                nav: 'orderhistory',  color: C.purple,      bg: C.purpleLight},
+    {id: 'tracking',      label: 'Track Orders',   icon: 'truck-delivery-outline', nav: 'dispatch',      color: C.teal,        bg: C.tealLight},
+    {id: 'ledger',        label: 'Ledger',         icon: 'book-open-outline',      nav: 'ledger',        color: C.warning,     bg: C.warningLight},
+    {id: 'returns',       label: 'Returns',        icon: 'package-variant-closed', nav: 'returns',       color: C.orange,      bg: C.orangeLight},
   ];
 
   return (
@@ -343,20 +380,21 @@ function DashboardGraphic({totalOrders, delivered, dispatched, monthlyValue, mon
     <View style={styles.graphicWrap}>
       <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
         <Defs>
-          {/* Main card gradient */}
+          {/* Main card gradient — deep navy to indigo, easy on the eyes */}
           <LinearGradient id="cardGrad" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0%"   stopColor="#C8102E" stopOpacity="1" />
-            <Stop offset="100%" stopColor="#6A0016" stopOpacity="1" />
+            <Stop offset="0%"   stopColor="#1B2A4A" stopOpacity="1" />
+            <Stop offset="55%"  stopColor="#243B6B" stopOpacity="1" />
+            <Stop offset="100%" stopColor="#1A3060" stopOpacity="1" />
           </LinearGradient>
           {/* Bar active gradient */}
           <LinearGradient id="barActive" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity="0.95" />
-            <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0.60" />
+            <Stop offset="0%"   stopColor="#93C5FD" stopOpacity="1" />
+            <Stop offset="100%" stopColor="#3B82F6" stopOpacity="0.8" />
           </LinearGradient>
           {/* Bar inactive gradient */}
           <LinearGradient id="barInactive" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity="0.35" />
-            <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0.15" />
+            <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity="0.25" />
+            <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0.08" />
           </LinearGradient>
         </Defs>
 
@@ -575,7 +613,7 @@ function BottomNavigation({activeTab, onChange}) {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  screen: {flex: 1, backgroundColor: C.primary},
+  screen: {flex: 1, backgroundColor: C.bg},
   scroll: {flex: 1, backgroundColor: C.bg},
   scrollBody: {paddingBottom: 80},
   subPageContainer: {flex: 1},
@@ -583,79 +621,90 @@ const styles = StyleSheet.create({
   loadingContainer: {flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 120},
   loadingText: {marginTop: 12, color: C.muted, fontSize: 14},
 
-  // ── Header ──
+  // ── Header — clean white card, red used only as accent ──
   header: {
-    backgroundColor: C.primary,
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    paddingTop: 16,
+    paddingBottom: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
   },
-  headerInner: {flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between'},
+  headerInner: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
   headerLeft: {flex: 1, paddingRight: 12},
   companyBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: C.primaryLight,
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 4,
     alignSelf: 'flex-start',
     marginBottom: 8,
     gap: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(200,16,46,0.12)',
   },
-  companyBadgeText: {color: '#FFFFFF', fontSize: 11, fontWeight: '700', letterSpacing: 0.3},
-  welcomeText: {color: '#FFFFFF', fontSize: 21, fontWeight: '800', letterSpacing: 0.2},
+  companyBadgeText: {color: C.primary, fontSize: 11, fontWeight: '700', letterSpacing: 0.3},
+  welcomeText: {color: C.text, fontSize: 22, fontWeight: '900', letterSpacing: 0.1},
   dealerMetaRow: {flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap'},
   dealerMetaChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: '#F1F4F8',
     borderRadius: 20,
     paddingHorizontal: 9,
     paddingVertical: 3,
     gap: 4,
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  dealerMetaChipText: {color: '#FFFFFF', fontSize: 11, fontWeight: '600'},
+  dealerMetaChipText: {color: C.textSub, fontSize: 11, fontWeight: '700'},
   notifBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#FFFFFF',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: C.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(200,16,46,0.15)',
   },
   notifDot: {
     position: 'absolute',
-    top: 9,
-    right: 9,
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: '#FF3B30',
+    top: 10,
+    right: 10,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: C.primary,
     borderWidth: 1.5,
-    borderColor: C.primary,
+    borderColor: '#FFFFFF',
   },
 
   // ── Sections ──
-  section: {paddingHorizontal: 16, marginTop: 20},
+  section: {paddingHorizontal: 16, marginTop: 22},
   sectionRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12},
-  sectionTitle: {color: C.text, fontSize: 16, fontWeight: '800', marginBottom: 12, letterSpacing: 0.1},
+  sectionTitle: {
+    color: C.text,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 14,
+    letterSpacing: 0.1,
+  },
   seeAll: {color: C.primary, fontSize: 13, fontWeight: '700'},
 
-  // ── Dashboard Graphic Banner ──
+  // ── Dashboard Graphic Banner — deep navy, not red ──
   graphicWrap: {
     marginHorizontal: 16,
-    marginTop: 14,
-    borderRadius: 18,
+    marginTop: 16,
+    borderRadius: 20,
     overflow: 'hidden',
-    shadowColor: C.primaryDark,
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    shadowOffset: {width: 0, height: 5},
-    elevation: 7,
+    shadowColor: '#1B2A4A',
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    shadowOffset: {width: 0, height: 6},
+    elevation: 8,
   },
   graphicOverlay: {
     position: 'absolute',
@@ -664,30 +713,32 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: 18,
-    paddingVertical: 14,
+    paddingVertical: 16,
     justifyContent: 'flex-start',
   },
   graphicBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 20,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     alignSelf: 'flex-start',
-    marginBottom: 6,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
-  graphicBadgeText: {color: '#FFFFFF', fontSize: 10, fontWeight: '700', letterSpacing: 0.4},
-  graphicBigNum:   {color: '#FFFFFF', fontSize: 34, fontWeight: '900', lineHeight: 38},
-  graphicBigLabel: {color: 'rgba(255,255,255,0.75)', fontSize: 12, fontWeight: '600', marginTop: 1},
-  graphicSubRow:   {flexDirection: 'row', gap: 14, marginTop: 8},
+  graphicBadgeText: {color: '#FFFFFF', fontSize: 10, fontWeight: '700', letterSpacing: 0.5},
+  graphicBigNum:   {color: '#FFFFFF', fontSize: 36, fontWeight: '900', lineHeight: 40},
+  graphicBigLabel: {color: 'rgba(255,255,255,0.70)', fontSize: 12, fontWeight: '600', marginTop: 2},
+  graphicSubRow:   {flexDirection: 'row', gap: 14, marginTop: 10},
   graphicStat:     {flexDirection: 'row', alignItems: 'center', gap: 5},
   graphicDot:      {width: 7, height: 7, borderRadius: 4},
   graphicStatText: {color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '600'},
   graphicPillWrap: {
     position: 'absolute',
-    bottom: 14,
+    bottom: 16,
     right: 18,
     alignItems: 'flex-end',
     gap: 4,
@@ -696,37 +747,37 @@ const styles = StyleSheet.create({
     width: 100,
     height: 5,
     borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.20)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
     overflow: 'hidden',
   },
   graphicPillFill: {
     height: '100%',
     borderRadius: 3,
-    backgroundColor: '#4ADE80',
+    backgroundColor: '#34D399',
   },
-  graphicPillLabel: {color: 'rgba(255,255,255,0.70)', fontSize: 10, fontWeight: '600'},
+  graphicPillLabel: {color: 'rgba(255,255,255,0.65)', fontSize: 10, fontWeight: '600'},
 
   // ── Summary Cards — 3-per-row ──
-  summaryGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 8},
+  summaryGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 10},
   summaryCard: {
     width: '31%',
     backgroundColor: C.card,
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 16,
+    padding: 14,
     borderWidth: 1,
     borderColor: C.border,
     ...shadow,
   },
   summaryIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  summaryValue: {color: C.text, fontSize: 22, fontWeight: '900'},
-  summaryLabel: {color: C.muted, fontSize: 11, fontWeight: '600', marginTop: 2},
+  summaryValue: {color: C.text, fontSize: 24, fontWeight: '900'},
+  summaryLabel: {color: C.muted, fontSize: 11, fontWeight: '600', marginTop: 3},
 
   // ── Financial Overview Strip ──
   financeStrip: {
@@ -738,65 +789,18 @@ const styles = StyleSheet.create({
     padding: 14,
     ...shadow,
   },
-  financeCard: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  financeDiv: {
-    width: 1,
-    backgroundColor: C.border,
-    marginHorizontal: 8,
-  },
-  financeVal: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: C.primary,
-    textAlign: 'center',
-  },
-  financeLbl: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: C.muted,
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  growthBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    borderRadius: 6,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    marginTop: 4,
-  },
-  growthText: {
-    fontSize: 9,
-    fontWeight: '800',
-  },
-  creditBarWrap: {
-    marginTop: 5,
-    alignItems: 'center',
-    width: '100%',
-  },
-  creditBarTrack: {
-    width: '90%',
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: C.border,
-    overflow: 'hidden',
-  },
-  creditBarFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  creditBarLabel: {
-    fontSize: 8,
-    color: C.muted,
-    fontWeight: '600',
-    marginTop: 2,
-  },
+  financeCard: {flex: 1, alignItems: 'center'},
+  financeDiv: {width: 1, backgroundColor: C.border, marginHorizontal: 8},
+  financeVal: {fontSize: 15, fontWeight: '900', color: C.primary, textAlign: 'center'},
+  financeLbl: {fontSize: 10, fontWeight: '600', color: C.muted, marginTop: 2, textAlign: 'center'},
+  growthBadge: {flexDirection: 'row', alignItems: 'center', gap: 2, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2, marginTop: 4},
+  growthText: {fontSize: 9, fontWeight: '800'},
+  creditBarWrap: {marginTop: 5, alignItems: 'center', width: '100%'},
+  creditBarTrack: {width: '90%', height: 4, borderRadius: 2, backgroundColor: C.border, overflow: 'hidden'},
+  creditBarFill: {height: '100%', borderRadius: 2},
+  creditBarLabel: {fontSize: 8, color: C.muted, fontWeight: '600', marginTop: 2},
 
-  // ── Quick Actions — 6 tiles (2 + 4 layout) ──
+  // ── Quick Actions ──
   qaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -807,8 +811,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
     alignItems: 'center',
     backgroundColor: C.card,
-    borderRadius: 16,
-    paddingVertical: 16,
+    borderRadius: 18,
+    paddingVertical: 18,
     borderWidth: 1,
     borderColor: C.border,
     ...shadow,
@@ -818,25 +822,25 @@ const styles = StyleSheet.create({
     marginHorizontal: 3,
     alignItems: 'center',
     backgroundColor: C.card,
-    borderRadius: 14,
-    paddingVertical: 12,
+    borderRadius: 16,
+    paddingVertical: 14,
     borderWidth: 1,
     borderColor: C.border,
     ...shadow,
   },
   qaIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   qaLabel: {
     color: C.textSub,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
-    marginTop: 5,
+    marginTop: 4,
     textAlign: 'center',
     paddingHorizontal: 2,
   },
@@ -844,7 +848,7 @@ const styles = StyleSheet.create({
   // ── Order Cards ──
   orderCard: {
     backgroundColor: C.card,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: C.border,
     padding: 14,
@@ -870,14 +874,15 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   viewDetailsBtnText: {color: C.primary, fontSize: 12, fontWeight: '700'},
+
   // ── Empty State ──
   emptyState: {alignItems: 'center', paddingVertical: 30},
   emptyStateText: {color: C.muted, fontSize: 14, marginTop: 8},
 
-  // ── Bottom Nav — floating curved pill ──
+  // ── Bottom Nav — floating pill ──
   navWrap: {
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 14,
     paddingTop: 8,
     backgroundColor: 'transparent',
   },
@@ -888,19 +893,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 6,
     shadowColor: '#000',
-    shadowOpacity: 0.13,
-    shadowRadius: 18,
+    shadowOpacity: 0.10,
+    shadowRadius: 20,
     shadowOffset: {width: 0, height: 4},
-    elevation: 12,
+    elevation: 14,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: 'rgba(0,0,0,0.05)',
   },
-  navItem: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-  },
+  navItem: {flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3},
   navIconWrap: {
     width: 42,
     height: 32,
@@ -910,11 +910,11 @@ const styles = StyleSheet.create({
   },
   navIconWrapActive: {
     backgroundColor: C.primary,
-    width: 48,
+    width: 50,
     height: 36,
     borderRadius: 18,
     shadowColor: C.primary,
-    shadowOpacity: 0.45,
+    shadowOpacity: 0.35,
     shadowRadius: 8,
     shadowOffset: {width: 0, height: 3},
     elevation: 5,

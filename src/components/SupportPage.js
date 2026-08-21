@@ -5,8 +5,8 @@ import {colors, shadow} from './theme';
 
 function SupportPage({onBack}) {
   const contactOptions = [
-    {id: 1, title: 'Call Support', desc: '+91 1800-123-4567', icon: 'phone', color: '#4CAF50', action: () => Linking.openURL('tel:18001234567')},
-    {id: 2, title: 'WhatsApp', desc: 'Chat with us', icon: 'whatsapp', color: '#25D366', action: () => Linking.openURL('https://wa.me/918001234567')},
+    {id: 1, title: 'Call Support', desc: '+91 88••••• 936', icon: 'phone', color: '#4CAF50', action: () => Linking.openURL('tel:+918861691936')},
+    {id: 2, title: 'WhatsApp', desc: '+91 88••••• 936', icon: 'whatsapp', color: '#25D366', action: () => Linking.openURL('https://wa.me/918861691936')},
     {id: 3, title: 'Email Support', desc: 'support@srichakra.com', icon: 'email', color: '#2196F3', action: () => Linking.openURL('mailto:support@srichakra.com')},
     {id: 4, title: 'Help Center', desc: 'FAQs & guides', icon: 'help-circle', color: '#FF9800'},
   ];

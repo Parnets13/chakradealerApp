@@ -20,7 +20,7 @@ import {
 import Svg, {Defs, LinearGradient, Path, Stop} from 'react-native-svg';
 
 const {width: W, height: H} = Dimensions.get('window');
-const PRIMARY   = '#C8102E';
+const PRIMARY   = '#E8374A';
 const PRIMARY_D = '#9B0020';
 const WHITE     = '#FFFFFF';
 

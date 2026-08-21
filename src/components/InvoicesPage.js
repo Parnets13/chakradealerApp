@@ -26,13 +26,13 @@ import apiService from './services/apiService';
 const TABS = [
   {key: 'All',     label: 'All',     icon: 'file-document-multiple-outline', color: '#C51F2B'},
   {key: 'Paid',    label: 'Paid',    icon: 'check-circle-outline',           color: '#059669'},
-  {key: 'Overdue', label: 'Overdue', icon: 'alert-circle-outline',           color: '#DC2626'},
+  {key: 'Overdue', label: 'Overdue', icon: 'alert-circle-outline',           color: '#F05252'},
 ];
 
 // ─── Status badge map ─────────────────────────────────────────────────────────
 const STATUS = {
   Paid:      {color: '#059669', bg: '#D1FAE5', icon: 'check-circle'},
-  Overdue:   {color: '#DC2626', bg: '#FEE2E2', icon: 'alert-circle'},
+  Overdue:   {color: '#F05252', bg: '#FEF2F2', icon: 'alert-circle'},
   Pending:   {color: '#D97706', bg: '#FEF3C7', icon: 'clock-outline'},
   Partial:   {color: '#B45309', bg: '#FEF3C7', icon: 'clock-half'},
   Draft:     {color: '#6B7280', bg: '#F3F4F6', icon: 'file-outline'},
@@ -106,7 +106,7 @@ function StatsRow({stats}) {
       <View style={sr.topRow}>
         <StatCard label="Total"   value={stats.total}   icon="file-document-multiple" color="#2563EB" bg="#DBEAFE" />
         <StatCard label="Paid"    value={stats.paid}    icon="check-circle"           color="#059669" bg="#D1FAE5" />
-        <StatCard label="Overdue" value={stats.overdue} icon="alert-circle"           color="#DC2626" bg="#FEE2E2" />
+        <StatCard label="Overdue" value={stats.overdue} icon="alert-circle"           color="#F05252" bg="#FEF2F2" />
       </View>
       <View style={[sr.totalCard, {borderTopColor:'#7C3AED', borderTopWidth:3}]}>
         <View style={[sr.icon, {backgroundColor:'#EDE9FE'}]}>

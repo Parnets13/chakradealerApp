@@ -3,7 +3,8 @@
  * - No tick icons on fields
  * - Success shown as auto-closing popup (2s) then redirect to login
  * - Re-registration logic: pending/approved/rejected handled properly
- * - Added: GST Number, PAN Number, Credit Limit, Outstanding Amount, Zone
+ * - GST Number and PAN Number are optional fields
+ * - Zone field available
  */
 
 import React, {useEffect, useRef, useState} from 'react';
@@ -217,8 +218,6 @@ export default function DealerRegistrationScreen({onGoToLogin}) {
     // ── New fields ──
     gstNumber:     '',
     panNumber:     '',
-    creditLimit:   '',
-    outstandingAmount: '',
     zone:          '',
   });
   const [photo,     setPhoto]     = useState(null);
@@ -277,8 +276,6 @@ export default function DealerRegistrationScreen({onGoToLogin}) {
         gstin:             form.gstNumber.trim().toUpperCase() || undefined,
         gstNumber:         form.gstNumber.trim().toUpperCase() || undefined,
         panNumber:         form.panNumber.trim().toUpperCase() || undefined,
-        creditLimit:       form.creditLimit.trim() ? Number(form.creditLimit.trim()) : undefined,
-        outstandingAmount: form.outstandingAmount.trim() ? Number(form.outstandingAmount.trim()) : undefined,
         zone:              form.zone.trim() || undefined,
       };
 
@@ -326,8 +323,6 @@ export default function DealerRegistrationScreen({onGoToLogin}) {
             gstin:             form.gstNumber.trim().toUpperCase(),
             gstNumber:         form.gstNumber.trim().toUpperCase(),
             panNumber:         form.panNumber.trim().toUpperCase(),
-            creditLimit:       form.creditLimit ? Number(form.creditLimit) : 0,
-            outstandingAmount: form.outstandingAmount ? Number(form.outstandingAmount) : 0,
             zone:              form.zone.trim(),
           });
         }}
@@ -389,32 +384,15 @@ export default function DealerRegistrationScreen({onGoToLogin}) {
                 onChange={v => set('gstNumber')(v.replace(/\s/g,'').toUpperCase())}
                 placeholder="e.g. 22AAAAA0000A1Z5"
                 icon={IC.gst} error={errors.gstNumber}
-                maxLen={15}
+                maxLen={15} optional
                 hint="15-digit GST registration number"/>
 
               <Field label="PAN Number" value={form.panNumber}
                 onChange={v => set('panNumber')(v.replace(/\s/g,'').toUpperCase())}
                 placeholder="e.g. ABCDE1234F"
                 icon={IC.pan} error={errors.panNumber}
-               maxLen={10}
+                maxLen={10} optional
                 hint="10-character PAN card number"/>
-
-              <View style={s.rowTwo}>
-                <View style={{flex:1, marginRight:8}}>
-                  <Field label="Credit Limit (₹)" value={form.creditLimit}
-                    onChange={v => set('creditLimit')(v.replace(/[^0-9.]/g,''))}
-                    placeholder="e.g. 100000"
-                    keyboard="numeric" icon={IC.credit}
-                 />
-                </View>
-                <View style={{flex:1}}>
-                  <Field label="Outstanding (₹)" value={form.outstandingAmount}
-                    onChange={v => set('outstandingAmount')(v.replace(/[^0-9.]/g,''))}
-                    placeholder="e.g. 5000"
-                    keyboard="numeric" icon={IC.credit}
-                    />
-                </View>
-              </View>
 
               <Field label="Zone" value={form.zone}
                 onChange={set('zone')} placeholder="e.g. North, South, East, West"

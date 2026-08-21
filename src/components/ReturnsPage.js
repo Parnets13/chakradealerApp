@@ -74,25 +74,25 @@ function dealer_ts() {
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const C = {
-  primary:      '#C8102E',
-  primaryDark:  '#A0001C',
-  primaryLight: '#FDEAED',
-  success:      '#059669',
-  successLight: '#D1FAE5',
-  warning:      '#B45309',
+  primary:      '#E8374A',   // accent only — icons, badges, small fills
+  primaryDark:  '#C8102E',
+  primaryLight: '#FFF0F2',   // very soft blush
+  success:      '#16A34A',
+  successLight: '#DCFCE7',
+  warning:      '#D97706',
   warningLight: '#FEF3C7',
-  danger:       '#DC2626',
+  danger:       '#F05252',
   dangerLight:  '#FEF2F2',
-  info:         '#1565C0',
-  infoLight:    '#E3F0FF',
+  info:         '#2563EB',
+  infoLight:    '#DBEAFE',
   purple:       '#7C3AED',
   purpleLight:  '#EDE9FE',
-  bg:           '#F5F7FA',
+  bg:           '#F1F4F8',
   card:         '#FFFFFF',
-  border:       '#E2E8F0',
-  text:         '#1A2332',
-  textSub:      '#4A5568',
-  muted:        '#718096',
+  border:       '#E4E9F0',
+  text:         '#0F172A',
+  textSub:      '#374151',
+  muted:        '#6B7280',
 };
 
 const shadow = {
@@ -558,7 +558,7 @@ const dd = StyleSheet.create({
   xBtn:       { width: 34, height: 34, borderRadius: 17, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   statusBadge:{ alignSelf: 'flex-start', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, marginBottom: 18 },
   statusTxt:  { fontSize: 14, fontWeight: '900' },
-  secHdr:     { color: C.primary, fontSize: 11, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10 },
+  secHdr:     { color: NAVY, fontSize: 11, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10 },
   photoFull:  {
     width: '100%',
     // aspectRatio is set dynamically from real image dimensions — no black bars
@@ -1057,7 +1057,7 @@ function NewReturnModal({ visible, onClose, onSubmitted }) {
                   return (
                     <Pressable
                       key={r}
-                      style={[nf.chip, active && { backgroundColor: C.primary, borderColor: C.primary }]}
+                      style={[nf.chip, active && { backgroundColor: NAVY, borderColor: NAVY }]}
                       onPress={() => toggleReason(r)}>
                       {active && <Icon name="check" size={13} color="#FFF" style={{ marginRight: 4 }} />}
                       <Text style={[nf.chipTxt, active && { color: '#FFF' }]}>{r}</Text>
@@ -1172,7 +1172,7 @@ const nf = StyleSheet.create({
   productBtnMeta:{ color: C.muted, fontSize: 11, fontWeight: '600' },
   productPlaceholder: { flex: 1, color: C.muted, fontSize: 14 },
   qtyRow:       { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
-  qtyBtn:       { width: 42, height: 42, borderRadius: 11, backgroundColor: C.primaryLight, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.primary + '30' },
+  qtyBtn:       { width: 42, height: 42, borderRadius: 11, backgroundColor: '#FFE0E3', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FFAAB0' },
   qtyInput:     { width: 70, height: 42, backgroundColor: '#F8FAFC', borderRadius: 11, borderWidth: 1.5, borderColor: C.border, textAlign: 'center', fontSize: 18, fontWeight: '900', color: C.text },
   fullBtn:      { flex: 1, backgroundColor: '#F0F4FF', borderRadius: 11, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: C.info + '40' },
   fullBtnTxt:   { color: C.info, fontSize: 12, fontWeight: '700' },
@@ -1180,17 +1180,17 @@ const nf = StyleSheet.create({
   chipWrap:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   chip:         { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: C.border, backgroundColor: '#F8FAFC' },
   chipTxt:      { color: C.textSub, fontSize: 12, fontWeight: '700' },
-  selectedHint: { color: C.primary, fontSize: 11, fontWeight: '700', marginBottom: 10 },
+  selectedHint: { color: NAVY, fontSize: 11, fontWeight: '700', marginBottom: 10 },
   reasonInput:  { backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1.5, borderColor: C.border, padding: 13, fontSize: 14, color: C.text, minHeight: 70, marginBottom: 18 },
   photoBtn:     { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F8FAFC', borderRadius: 14, padding: 14, borderWidth: 1.5, borderColor: C.border, borderStyle: 'dashed', marginBottom: 22 },
-  photoTxt:     { flex: 1, color: C.primary, fontSize: 13, fontWeight: '700' },
+  photoTxt:     { flex: 1, color: NAVY, fontSize: 13, fontWeight: '700' },
   photoPreviewWrap: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F8FAFC', borderRadius: 14, padding: 12, borderWidth: 1.5, borderColor: C.success + '40', marginBottom: 22 },
   photoPreview: { width: 56, height: 56, borderRadius: 10, borderWidth: 1, borderColor: C.border },
   photoSize:    { color: C.muted, fontSize: 11, marginTop: 2 },
   btnRow:       { flexDirection: 'row', gap: 12 },
   cancelBtn:    { flex: 1, backgroundColor: '#F5F7FA', borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1.5, borderColor: C.border },
   cancelTxt:    { color: C.textSub, fontWeight: '700', fontSize: 14 },
-  submitBtn:    { flex: 2, backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
+  submitBtn:    { flex: 2, backgroundColor: NAVY, borderRadius: 14, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
   submitTxt:    { color: '#FFF', fontWeight: '800', fontSize: 15 },
 });
 
@@ -1453,30 +1453,31 @@ export default function ReturnsPage({ onBack }) {
 }
 
 // ─── Page Styles ──────────────────────────────────────────────────────────────
+const NAVY = '#E8374A'; // Brand logo red
 const ps = StyleSheet.create({
   screen:   { flex: 1, backgroundColor: C.bg },
 
-  // Navbar
+  // Navbar — navy, not red
   nav: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: C.primary,
+    backgroundColor: NAVY,
     paddingHorizontal: 16,
     paddingTop: Platform.OS === 'android' ? 14 : 14,
     paddingBottom: 16,
   },
   navBtn: {
     width: 38, height: 38, borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center', justifyContent: 'center',
   },
   navTitle: { color: '#FFF', fontSize: 18, fontWeight: '800' },
-  navSub:   { color: 'rgba(255,255,255,0.72)', fontSize: 11, marginTop: 1 },
+  navSub:   { color: 'rgba(255,255,255,0.70)', fontSize: 11, marginTop: 1 },
 
   // Filter pills
   filterBar:    { backgroundColor: C.card, borderBottomWidth: 1, borderBottomColor: C.border },
   filterScroll: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
   pill:         { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
-  pillActive:   { backgroundColor: C.primaryDark, borderColor: C.primaryDark },
+  pillActive:   { backgroundColor: NAVY, borderColor: NAVY },
   pillTxt:      { color: C.muted, fontSize: 12, fontWeight: '600' },
   pillTxtActive:{ color: '#FFF', fontSize: 12, fontWeight: '700' },
 
@@ -1487,7 +1488,7 @@ const ps = StyleSheet.create({
   centerBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   errTtl:    { color: C.text, fontSize: 16, fontWeight: '700', marginTop: 14, textAlign: 'center' },
   errSub:    { color: C.muted, fontSize: 13, textAlign: 'center', marginTop: 6, paddingHorizontal: 20, lineHeight: 19 },
-  retryBtn:  { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.primary, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, marginTop: 16 },
+  retryBtn:  { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: NAVY, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, marginTop: 16 },
   retryTxt:  { color: '#FFF', fontWeight: '700', fontSize: 14 },
 
   // Inline error banner
@@ -1496,9 +1497,9 @@ const ps = StyleSheet.create({
 
   // Empty state
   emptyWrap:  { alignItems: 'center', paddingVertical: 64 },
-  emptyIconBg:{ width: 80, height: 80, borderRadius: 40, backgroundColor: C.primaryLight, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyIconBg:{ width: 80, height: 80, borderRadius: 40, backgroundColor: '#FFE0E3', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   emptyTtl:   { color: C.text, fontSize: 17, fontWeight: '800' },
   emptySub:   { color: C.muted, fontSize: 13, textAlign: 'center', marginTop: 8, paddingHorizontal: 32, lineHeight: 20 },
-  newBtn:     { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.primary, borderRadius: 14, paddingHorizontal: 22, paddingVertical: 13, marginTop: 22 },
+  newBtn:     { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: NAVY, borderRadius: 14, paddingHorizontal: 22, paddingVertical: 13, marginTop: 22 },
   newBtnTxt:  { color: '#FFF', fontSize: 14, fontWeight: '800' },
 });

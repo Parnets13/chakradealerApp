@@ -12,11 +12,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width: W, height: H } = Dimensions.get('window');
-const PRIMARY = '#C8102E';
-const WHITE = '#FFFFFF';
-const DARK = '#1A1A1A';
-const GREY = '#6B7280';
-const GREY_LIGHT = '#F3F4F6';
+const PRIMARY    = '#E8374A';   // Brand logo red
+const WHITE      = '#FFFFFF';
+const DARK       = '#0F172A';
+const GREY       = '#6B7280';
+const GREY_LIGHT = '#F1F4F8';
 
 export default function WelcomeScreen({ onRegister, onLogin }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -40,9 +40,9 @@ export default function WelcomeScreen({ onRegister, onLogin }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
-      
-      {/* Small Red Header */}
+      <StatusBar barStyle="light-content" backgroundColor="#B5001A" />
+
+      {/* Brand red top strip */}
       <View style={styles.smallRedHeader} />
       
       <View style={styles.content}>
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
   smallRedHeader: {
     width: W,
     height: H * 0.05,
-    backgroundColor: PRIMARY
+    backgroundColor: PRIMARY,
   },
   content: {
     flex: 1,
@@ -130,13 +130,20 @@ const styles = StyleSheet.create({
     width: '100%'
   },
   logoBox: {
-    width: W * 0.4,
-    height: W * 0.2,
+    width: W * 0.42,
+    height: W * 0.22,
     backgroundColor: WHITE,
-    borderRadius: 16,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 18
+    marginBottom: 20,
+    shadowColor: '#1B2A4A',
+    shadowOpacity: 0.10,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#E4E9F0',
   },
   logoImage: {
     width: '90%',
@@ -180,18 +187,25 @@ const styles = StyleSheet.create({
   },
   featureCard: {
     backgroundColor: WHITE,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 14
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E4E9F0',
+    shadowColor: '#1B2A4A',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   featureIconBox: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     backgroundColor: GREY_LIGHT,
-    borderRadius: 8,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 6
+    marginBottom: 8,
   },
   featureIcon: {
     fontSize: 16
@@ -209,33 +223,41 @@ const styles = StyleSheet.create({
   },
   registerButton: {
     backgroundColor: PRIMARY,
-    paddingVertical: 14,
-    paddingHorizontal: 36,
-    borderRadius: 14,
-    alignSelf: 'center',
-    marginBottom: 10
+    paddingVertical: 15,
+    paddingHorizontal: 40,
+    borderRadius: 16,
+    alignSelf: 'stretch',
+    marginBottom: 10,
+    shadowColor: '#1B2A4A',
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
   },
   registerButtonText: {
     color: WHITE,
     fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.2
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    textAlign: 'center',
   },
   loginButton: {
     borderWidth: 1.5,
     borderColor: PRIMARY,
-    paddingVertical: 13,
-    paddingHorizontal: 36,
-    borderRadius: 14,
-    alignSelf: 'center',
-    marginTop: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    borderRadius: 16,
+    alignSelf: 'stretch',
+    marginTop: 8,
     marginBottom: 10,
+    backgroundColor: '#FFF0F2',
   },
   loginButtonText: {
     color: PRIMARY,
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0.2,
+    textAlign: 'center',
   },
   footer: {
     fontSize: 10,

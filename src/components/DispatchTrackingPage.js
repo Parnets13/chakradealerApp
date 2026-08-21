@@ -26,15 +26,15 @@ import apiService from './services/apiService';
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const C = {
-  red:    '#C51F2B',
-  text:   '#212121',
-  muted:  '#757575',
-  orange: '#FF6F00',
-  green:  '#1D9E75',
-  blue:   '#1976D2',
-  bg:     '#F5F5F5',
+  red:    '#E8374A',   // accent only — small fills
+  text:   '#0F172A',
+  muted:  '#6B7280',
+  orange: '#EA580C',
+  green:  '#16A34A',
+  blue:   '#2563EB',
+  bg:     '#F1F4F8',
   white:  '#FFFFFF',
-  border: '#E8E8E8',
+  border: '#E4E9F0',
 };
 
 const shadow = {
@@ -399,7 +399,7 @@ function OrderTrackMode({ orderId, orderData, onBack }) {
                 const isActive = step.active    || false;
                 const isPend   = !isDone && !isActive;
                 const isLast   = i === displayStages.length - 1;
-                const dotColor = isDone ? C.green : isActive ? C.red : '#DDD';
+                const dotColor = isDone ? C.green : isActive ? NAVY : '#DDD';
                 const lineColor= isDone ? C.green : '#E0E0E0';
                 return (
                   <View key={i} style={{ flexDirection: 'row', marginBottom: 0 }}>
@@ -422,7 +422,7 @@ function OrderTrackMode({ orderId, orderData, onBack }) {
                     <View style={{ flex: 1, paddingLeft: 10, paddingBottom: 14 }}>
                       <Text style={[
                         { fontSize: 13, fontWeight: '600', color: C.text, marginBottom: 2 },
-                        isActive && { color: C.red, fontWeight: '900' },
+                        isActive && { color: NAVY, fontWeight: '900' },
                         isPend   && { color: '#BDBDBD' },
                         isDone   && { fontWeight: '700' },
                       ]}>
@@ -623,35 +623,53 @@ function DispatchListMode({ onBack }) {
   const onRefresh = () => { setRefreshing(true); fetchDispatches(true); };
 
   const statCards = [
-    { label: 'Total',      value: stats.total     || shipments.length, color: C.text   },
-    { label: 'In Transit', value: stats.inTransit  || 0,               color: C.orange },
-    { label: 'Delivered',  value: stats.delivered  || 0,               color: C.green  },
-    { label: 'Preparing',  value: stats.preparing  || 0,               color: C.blue   },
+    { label: 'Total',      value: stats.total     || shipments.length, color: '#475569', bg: '#F1F5F9', icon: 'package-variant'   },
+    { label: 'In Transit', value: stats.inTransit  || 0,               color: C.orange,  bg: '#FFF7ED', icon: 'truck-delivery'    },
+    { label: 'Delivered',  value: stats.delivered  || 0,               color: C.green,   bg: '#F0FDF4', icon: 'check-circle'      },
+    { label: 'Preparing',  value: stats.preparing  || 0,               color: C.blue,    bg: '#EFF6FF', icon: 'cog'               },
   ];
+
+  // Filter config — label + colour + icon
+  const FILTER_META = {
+    'All Orders': { color: '#64748B', icon: 'view-grid-outline'      },
+    'In Transit': { color: C.orange,  icon: 'truck-fast-outline'      },
+    'Delivered':  { color: C.green,   icon: 'home-check-outline'      },
+    'Pending':    { color: '#D97706', icon: 'clock-outline'           },
+    'Preparing':  { color: C.blue,    icon: 'cog-outline'             },
+  };
 
   return (
     <View style={styles.screen}>
-      {/* Top Nav */}
+
+      {/* ── Navbar ── */}
       <View style={styles.topNav}>
         <Pressable onPress={onBack} style={styles.navBack}>
-          <Icon name="arrow-left" size={24} color="#FFF" />
+          <Icon name="arrow-left" size={22} color="#FFF" />
         </Pressable>
         <View style={styles.navCenter}>
-          <Icon name="truck-delivery" size={22} color="#FFF" />
-          <Text style={styles.navTitle}>Dispatch & Tracking</Text>
+          <View style={styles.navIconWrap}>
+            <Icon name="truck-delivery" size={18} color="#FFF" />
+          </View>
+          <View>
+            <Text style={styles.navTitle}>Dispatch & Tracking</Text>
+            <Text style={styles.navSub}>{shipments.length} shipment{shipments.length !== 1 ? 's' : ''}</Text>
+          </View>
         </View>
-        <Pressable style={styles.navBack} onPress={() => setSearchVisible(v => !v)}>
-          <Icon name="magnify" size={24} color="#FFF" />
+        <Pressable style={[styles.navBack, searchVisible && { backgroundColor: 'rgba(255,255,255,0.35)' }]}
+          onPress={() => setSearchVisible(v => !v)}>
+          <Icon name={searchVisible ? 'close' : 'magnify'} size={22} color="#FFF" />
         </Pressable>
       </View>
 
-      {/* Search bar */}
+      {/* ── Search bar — slides in ── */}
       {searchVisible && (
         <View style={styles.searchBar}>
-          <Icon name="magnify" size={20} color={C.muted} />
+          <View style={styles.searchIconBox}>
+            <Icon name="magnify" size={17} color={C.muted} />
+          </View>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search by Order ID, Product…"
+            placeholder="Search by Order ID, product…"
             placeholderTextColor={C.muted}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -660,52 +678,80 @@ function DispatchListMode({ onBack }) {
             autoFocus
           />
           {searchQuery.length > 0 && (
-            <Pressable onPress={() => setSearchQuery('')}>
-              <Icon name="close-circle" size={20} color={C.muted} />
+            <Pressable onPress={() => setSearchQuery('')} style={{ padding: 2 }}>
+              <Icon name="close-circle" size={18} color={C.muted} />
             </Pressable>
           )}
         </View>
       )}
 
-      {/* Stats row */}
+      {/* ── Stats — single row, 4 equal cards ── */}
       <View style={styles.statsRow}>
         {statCards.map(s => (
-          <View key={s.label} style={styles.statCard}>
+          <View key={s.label} style={[styles.statCard, { backgroundColor: s.bg, borderColor: s.color + '30' }]}>
+            <View style={[styles.statIconWrap, { backgroundColor: s.color + '18' }]}>
+              <Icon name={s.icon} size={16} color={s.color} />
+            </View>
             <Text style={[styles.statVal, { color: s.color }]}>{s.value}</Text>
             <Text style={styles.statLbl}>{s.label}</Text>
           </View>
         ))}
       </View>
 
-      {/* Filter chips */}
+      {/* ── Filter pills ── */}
       <View style={styles.filterWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-          {filters.map(f => (
-            <Pressable key={f} onPress={() => setActiveFilter(f)}
-              style={[styles.chip, activeFilter === f && styles.chipActive]}>
-              <Text style={[styles.chipTxt, activeFilter === f && styles.chipTxtActive]}>{f}</Text>
-            </Pressable>
-          ))}
+          {filters.map(f => {
+            const meta = FILTER_META[f] || { color: '#64748B', icon: 'circle-outline' };
+            const isOn = activeFilter === f;
+            const cnt  = f === 'All Orders' ? shipments.length
+              : f === 'In Transit' ? stats.inTransit
+              : f === 'Delivered'  ? stats.delivered
+              : f === 'Preparing'  ? stats.preparing
+              : 0;
+            return (
+              <Pressable key={f} onPress={() => setActiveFilter(f)}
+                style={[styles.pill, isOn && { backgroundColor: meta.color, borderColor: meta.color }]}>
+                {!isOn && <View style={[styles.pillDot, { backgroundColor: meta.color }]} />}
+                <Text style={[styles.pillTxt, isOn && { color: '#fff' }]}>{f}</Text>
+                {cnt > 0 && (
+                  <View style={[styles.pillBadge, { backgroundColor: isOn ? 'rgba(255,255,255,0.3)' : meta.color }]}>
+                    <Text style={styles.pillBadgeTxt}>{cnt}</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
         </ScrollView>
       </View>
 
-      {/* List */}
+      {/* ── List ── */}
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={C.red} />
+          <View style={styles.loadWrap}>
+            <ActivityIndicator size="large" color={C.red} />
+          </View>
           <Text style={styles.centerTxt}>Loading dispatches…</Text>
         </View>
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ padding: 14, paddingBottom: 60 }}
+          contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 8, paddingBottom: 60 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[C.red]} tintColor={C.red} />}
         >
           {shipments.length === 0 ? (
-            <View style={styles.center}>
-              <Icon name="truck-outline" size={64} color={C.muted} />
-              <Text style={styles.emptyTitle}>No Dispatches Found</Text>
-              <Text style={styles.emptyTxt}>{activeFilter !== 'All Orders' ? `No "${activeFilter}" orders` : 'No dispatch orders yet'}</Text>
+            <View style={styles.emptyWrap}>
+              <View style={styles.emptyIconCircle}>
+                <Icon name="truck-outline" size={40} color={C.red} style={{ opacity: 0.4 }} />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {activeFilter !== 'All Orders' ? `No ${activeFilter} shipments` : 'No Dispatches Yet'}
+              </Text>
+              <Text style={styles.emptyTxt}>
+                {activeFilter !== 'All Orders'
+                  ? `You have no "${activeFilter}" orders at the moment`
+                  : 'Once your orders are dispatched they will appear here'}
+              </Text>
             </View>
           ) : (
             shipments.map(s => (
@@ -1091,40 +1137,55 @@ function ShipmentCard({ shipment, showDeliveredUI = false }) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 // Shared screen + nav styles
+const NAVY = '#E8374A'; // Brand logo red
 const styles = StyleSheet.create({
-  screen:      { flex: 1, backgroundColor: C.bg },
-  topNav:      { backgroundColor: C.red, paddingHorizontal: 16, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...shadow },
-  navBack:     { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  navCenter:   { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'center' },
-  navTitle:    { color: '#FFF', fontSize: 19, fontWeight: '900' },
+  screen:        { flex: 1, backgroundColor: C.bg },
 
-  searchBar:   { backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E0E0E0' },
-  searchInput: { flex: 1, fontSize: 15, color: C.text, padding: 0 },
+  // Navbar
+  topNav:        { backgroundColor: NAVY, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...shadow },
+  navBack:       { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  navCenter:     { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'center' },
+  navIconWrap:   { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  navTitle:      { color: '#FFF', fontSize: 16, fontWeight: '900', letterSpacing: 0.2 },
+  navSub:        { color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: '600', marginTop: 1 },
 
-  statsRow:    { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingVertical: 14, backgroundColor: C.bg },
-  statCard:    { flex: 1, backgroundColor: C.white, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 8, alignItems: 'center', ...shadow },
-  statVal:     { fontSize: 24, fontWeight: '900', marginBottom: 4 },
-  statLbl:     { fontSize: 10, color: C.muted, fontWeight: '600', textAlign: 'center' },
+  // Search
+  searchBar:     { backgroundColor: C.white, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1.5, borderBottomColor: '#EEF0F5' },
+  searchIconBox: { width: 28, height: 28, borderRadius: 8, backgroundColor: '#F8F9FA', alignItems: 'center', justifyContent: 'center' },
+  searchInput:   { flex: 1, fontSize: 14, color: C.text, fontWeight: '500', padding: 0 },
 
-  filterWrap:  { backgroundColor: C.white, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#E0E0E0' },
-  filterRow:   { paddingHorizontal: 14, gap: 8 },
-  chip:        { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F0F0F0', marginRight: 6 },
-  chipActive:  { backgroundColor: C.red },
-  chipTxt:     { color: C.text, fontSize: 13, fontWeight: '700' },
-  chipTxtActive:{ color: '#FFF' },
+  // Stats — single horizontal row
+  statsRow:      { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingVertical: 12 },
+  statCard:      { flex: 1, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center', borderWidth: 1.5, gap: 4 },
+  statIconWrap:  { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  statVal:       { fontSize: 20, fontWeight: '900', lineHeight: 24 },
+  statLbl:       { fontSize: 10, color: C.muted, fontWeight: '700', textAlign: 'center' },
 
-  center:      { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
-  centerTxt:   { marginTop: 12, color: C.muted, fontSize: 14 },
-  emptyTitle:  { fontSize: 18, fontWeight: '900', color: C.text, marginTop: 16 },
-  emptyTxt:    { fontSize: 13, color: C.muted, marginTop: 6, textAlign: 'center' },
+  // Filter pills
+  filterWrap:    { backgroundColor: C.bg, paddingTop: 2, paddingBottom: 4 },
+  filterRow:     { paddingHorizontal: 14, paddingVertical: 8, gap: 8, alignItems: 'center' },
+  pill:          { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 13, paddingVertical: 8, borderRadius: 22, backgroundColor: C.white, borderWidth: 1.5, borderColor: '#E4E9F0' },
+  pillDot:       { width: 7, height: 7, borderRadius: 4 },
+  pillTxt:       { fontSize: 13, fontWeight: '700', color: C.text },
+  pillBadge:     { minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  pillBadgeTxt:  { fontSize: 10, fontWeight: '900', color: '#fff' },
+
+  // Loading / empty
+  center:        { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
+  loadWrap:      { width: 64, height: 64, borderRadius: 32, backgroundColor: '#FFF1F2', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  centerTxt:     { color: C.muted, fontSize: 14, fontWeight: '600' },
+  emptyWrap:     { alignItems: 'center', paddingTop: 60, paddingHorizontal: 32 },
+  emptyIconCircle:{ width: 90, height: 90, borderRadius: 45, backgroundColor: '#FFF1F2', alignItems: 'center', justifyContent: 'center', marginBottom: 18, borderWidth: 1.5, borderColor: '#FECDD3' },
+  emptyTitle:    { fontSize: 18, fontWeight: '900', color: C.text, marginBottom: 8 },
+  emptyTxt:      { fontSize: 13, color: C.muted, textAlign: 'center', lineHeight: 20 },
 });
 
 // Order Track Mode card styles
 const tStyles = StyleSheet.create({
   card:         { backgroundColor: C.white, borderRadius: 16, borderWidth: 1, borderColor: C.border, marginBottom: 14, overflow: 'hidden', ...shadow },
   headerRow:    { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  orderId:      { fontSize: 20, fontWeight: '900', color: '#1A1A1A', letterSpacing: 0.2 },
-  productLine:  { fontSize: 13, color: '#555', marginTop: 3, fontWeight: '500', lineHeight: 18 },
+  orderId:      { fontSize: 20, fontWeight: '900', color: C.text, letterSpacing: 0.2 },
+  productLine:  { fontSize: 13, color: C.muted, marginTop: 3, fontWeight: '500', lineHeight: 18 },
   statusBadge:  { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, marginLeft: 8, flexShrink: 0 },
   statusTxt:    { fontSize: 11, fontWeight: '900' },
 
@@ -1132,87 +1193,87 @@ const tStyles = StyleSheet.create({
   stepsRow:     { flexDirection: 'row', alignItems: 'center' },
   stepDot:      { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   stepDone:     { backgroundColor: C.green },
-  stepActive:   { backgroundColor: C.red },
-  stepPending:  { backgroundColor: '#E0E0E0' },
-  stepLine:     { flex: 1, height: 3, backgroundColor: '#E0E0E0', marginHorizontal: 2 },
+  stepActive:   { backgroundColor: NAVY },
+  stepPending:  { backgroundColor: '#E4E9F0' },
+  stepLine:     { flex: 1, height: 3, backgroundColor: '#E4E9F0', marginHorizontal: 2 },
   stepLineDone: { backgroundColor: C.green },
   labelsRow:    { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, paddingHorizontal: 2 },
-  stepLbl:      { fontSize: 10, color: '#888', fontWeight: '600', flex: 1, textAlign: 'center' },
-  stepLblActive:{ color: C.red, fontWeight: '900' },
-  pBarBg:       { height: 4, backgroundColor: '#F0F0F0', borderRadius: 2, marginTop: 10 },
-  pBarFill:     { height: 4, backgroundColor: C.red, borderRadius: 2 },
+  stepLbl:      { fontSize: 10, color: C.muted, fontWeight: '600', flex: 1, textAlign: 'center' },
+  stepLblActive:{ color: NAVY, fontWeight: '900' },
+  pBarBg:       { height: 4, backgroundColor: '#E4E9F0', borderRadius: 2, marginTop: 10 },
+  pBarFill:     { height: 4, backgroundColor: NAVY, borderRadius: 2 },
 
-  expectedTxt:  { fontSize: 13, color: '#555', paddingHorizontal: 16, paddingBottom: 10, fontWeight: '500' },
-  expectedBold: { fontWeight: '900', color: '#1A1A1A' },
+  expectedTxt:  { fontSize: 13, color: C.muted, paddingHorizontal: 16, paddingBottom: 10, fontWeight: '500' },
+  expectedBold: { fontWeight: '900', color: C.text },
 
-  courierRow:   { flexDirection: 'row', alignItems: 'center', marginHorizontal: 14, marginBottom: 14, backgroundColor: '#FFF0F0', borderRadius: 12, padding: 12, gap: 10 },
-  courierIcon:  { width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFE0E0', alignItems: 'center', justifyContent: 'center' },
-  courierName:  { fontSize: 13, fontWeight: '800', color: '#1A1A1A' },
-  courierSub:   { fontSize: 11, color: '#888', marginTop: 2 },
+  courierRow:   { flexDirection: 'row', alignItems: 'center', marginHorizontal: 14, marginBottom: 14, backgroundColor: '#FFF5F6', borderRadius: 12, padding: 12, gap: 10 },
+  courierIcon:  { width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFE0E3', alignItems: 'center', justifyContent: 'center' },
+  courierName:  { fontSize: 13, fontWeight: '800', color: C.text },
+  courierSub:   { fontSize: 11, color: C.muted, marginTop: 2 },
 
-  sectionTitle: { fontSize: 12, fontWeight: '900', color: C.red, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 12, paddingHorizontal: 16, paddingTop: 14 },
-  detailRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 8, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
-  detailLbl:    { fontSize: 12, fontWeight: '600', color: '#888', flex: 1 },
-  detailVal:    { fontSize: 12, fontWeight: '700', color: '#1A1A1A', textAlign: 'right', flexShrink: 1 },
+  sectionTitle: { fontSize: 12, fontWeight: '900', color: NAVY, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 12, paddingHorizontal: 16, paddingTop: 14 },
+  detailRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 8, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: C.border },
+  detailLbl:    { fontSize: 12, fontWeight: '600', color: C.muted, flex: 1 },
+  detailVal:    { fontSize: 12, fontWeight: '700', color: C.text, textAlign: 'right', flexShrink: 1 },
 });
 
 // Shipment Card styles
 const scStyles = StyleSheet.create({
   card:         { backgroundColor: C.white, borderRadius: 18, marginBottom: 14, overflow: 'hidden', ...shadow },
-  header:       { backgroundColor: C.white, padding: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  header:       { backgroundColor: C.white, padding: 16, borderBottomWidth: 1, borderBottomColor: C.border },
   orderId:      { fontSize: 17, fontWeight: '900', color: C.text },
   badge:        { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   badgeTxt:     { fontSize: 11, fontWeight: '800' },
   details:      { color: C.muted, fontSize: 12, marginBottom: 14 },
 
   stepsRow:     { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  stepDot:      { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFCDD2' },
+  stepDot:      { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E4E9F0' },
   stepDone:     { backgroundColor: C.green },
-  stepActive:   { backgroundColor: C.red },
-  stepPend:     { backgroundColor: '#E0E0E0' },
-  stepLine:     { flex: 1, height: 3, backgroundColor: '#E0E0E0', marginHorizontal: 3 },
+  stepActive:   { backgroundColor: NAVY },
+  stepPend:     { backgroundColor: '#E4E9F0' },
+  stepLine:     { flex: 1, height: 3, backgroundColor: '#E4E9F0', marginHorizontal: 3 },
   stepLineDone: { backgroundColor: C.green },
   labelsRow:    { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   stepLbl:      { fontSize: 9, color: C.muted, fontWeight: '600', width: 60, textAlign: 'center' },
-  pBarBg:       { height: 5, backgroundColor: '#FFCDD2', borderRadius: 3, marginBottom: 10, overflow: 'hidden' },
-  pBarFill:     { height: '100%', backgroundColor: C.red, borderRadius: 3 },
+  pBarBg:       { height: 5, backgroundColor: '#E4E9F0', borderRadius: 3, marginBottom: 10, overflow: 'hidden' },
+  pBarFill:     { height: '100%', backgroundColor: NAVY, borderRadius: 3 },
   datesTxt:     { fontSize: 12, color: C.muted },
 
-  courierRow:   { flexDirection: 'row', alignItems: 'center', padding: 14, backgroundColor: '#FFF5F5', gap: 10 },
-  courierIcon:  { width: 42, height: 42, borderRadius: 10, backgroundColor: 'rgba(197,31,43,0.10)', alignItems: 'center', justifyContent: 'center' },
+  courierRow:   { flexDirection: 'row', alignItems: 'center', padding: 14, backgroundColor: '#FFF5F6', gap: 10 },
+  courierIcon:  { width: 42, height: 42, borderRadius: 10, backgroundColor: '#FFE0E3', alignItems: 'center', justifyContent: 'center' },
   courierName:  { fontSize: 13, fontWeight: '800', color: C.text, marginBottom: 2 },
   courierSub:   { fontSize: 11, color: C.muted },
-  activeBadge:  { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(197,31,43,0.10)', paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8 },
-  activeTxt:    { color: C.red, fontSize: 11, fontWeight: '800' },
+  activeBadge:  { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFE0E3', paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8 },
+  activeTxt:    { color: NAVY, fontSize: 11, fontWeight: '800' },
 
-  timelineWrap: { padding: 16, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
+  timelineWrap: { padding: 16, borderTopWidth: 1, borderTopColor: C.border },
   tlTitle:      { fontSize: 14, fontWeight: '900', color: C.text, marginBottom: 12 },
-  tlDot:        { width: 12, height: 12, borderRadius: 6, backgroundColor: '#E0E0E0', zIndex: 2 },
+  tlDot:        { width: 12, height: 12, borderRadius: 6, backgroundColor: '#E4E9F0', zIndex: 2 },
   tlDotDone:    { backgroundColor: C.green },
-  tlDotActive:  { backgroundColor: C.red },
-  tlLine:       { position: 'absolute', left: 4, top: 14, width: 2, height: 26, backgroundColor: '#E0E0E0' },
+  tlDotActive:  { backgroundColor: NAVY },
+  tlLine:       { position: 'absolute', left: 4, top: 14, width: 2, height: 26, backgroundColor: '#E4E9F0' },
   tlLineDone:   { backgroundColor: C.green },
   tlLabel:      { fontSize: 13, fontWeight: '600', color: C.text, marginBottom: 2 },
-  tlLabelActive:{ color: C.red, fontWeight: '900' },
+  tlLabelActive:{ color: NAVY, fontWeight: '900' },
   tlLabelPend:  { color: '#BDBDBD' },
   tlTime:       { fontSize: 11, color: C.muted },
 
-  itemsBox:     { marginTop: 12, backgroundColor: '#F8F9FA', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#EEEEEE' },
+  itemsBox:     { marginTop: 12, backgroundColor: '#F8FAFD', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.border },
   itemsTitle:   { fontSize: 12, fontWeight: '800', color: C.text, marginBottom: 8 },
   itemRow:      { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5 },
-  itemName:     { flex: 1, fontSize: 12, fontWeight: '600', color: '#555' },
+  itemName:     { flex: 1, fontSize: 12, fontWeight: '600', color: C.muted },
   itemQty:      { fontSize: 11, fontWeight: '700', color: C.muted },
-  itemPrice:    { fontSize: 11, fontWeight: '700', color: C.red, marginLeft: 4 },
+  itemPrice:    { fontSize: 11, fontWeight: '700', color: C.blue, marginLeft: 4 },
 
-  callBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, backgroundColor: 'rgba(197,31,43,0.08)', borderRadius: 10, paddingVertical: 11 },
-  callTxt:      { color: C.red, fontSize: 13, fontWeight: '800' },
+  callBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, backgroundColor: '#FFF0F2', borderRadius: 10, paddingVertical: 11, borderWidth: 1, borderColor: '#FFD0D5' },
+  callTxt:      { color: NAVY, fontSize: 13, fontWeight: '800' },
 
   // Bottom action row
-  bottomRow:    { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F0F0F0' },
-  viewBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRightWidth: 1, borderRightColor: '#F0F0F0' },
-  viewBtnTxt:   { color: C.red, fontSize: 13, fontWeight: '800' },
+  bottomRow:    { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: C.border },
+  viewBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRightWidth: 1, borderRightColor: C.border },
+  viewBtnTxt:   { color: NAVY, fontSize: 13, fontWeight: '800' },
   rateBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13 },
-  rateBtnTxt:   { color: C.red, fontSize: 13, fontWeight: '800' },
+  rateBtnTxt:   { color: NAVY, fontSize: 13, fontWeight: '800' },
 
   // Delivered banner
   deliveredBanner:   { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#16A34A', padding: 12, paddingHorizontal: 14 },

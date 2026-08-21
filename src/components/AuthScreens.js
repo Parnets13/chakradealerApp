@@ -28,10 +28,10 @@ import authService from './services/authService';
 const {width: W} = Dimensions.get('window');
 
 /* ─── Brand colours ──────────────────────────────────────── */
-const RED    = '#E05565';
-const DARK   = '#1A1A1A';
+const RED    = '#E8374A';   // Brand logo red — primary color
+const DARK   = '#0F172A';
 const GREY   = '#6B7280';
-const PINK   = '#FFF5F6';
+const PINK   = '#FFF0F2';   // Soft brand red tint for icon backgrounds
 
 /* ─── SVG icon helper ────────────────────────────────────── */
 function SvgIcon({d, size = 18, color = GREY, sw = 1.8}) {
@@ -83,10 +83,10 @@ function HeroBanner({children, height = HEADER_H}) {
         <Svg width={W} height={height} viewBox={`0 0 ${W} ${height}`} style={StyleSheet.absoluteFill}>
           <Defs>
             <LinearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%"   stopColor="#C94455" />
-              <Stop offset="50%"  stopColor="#D44D5E" />
-              <Stop offset="100%" stopColor="#E05565" />
-            </LinearGradient>
+                <Stop offset="0%"   stopColor="#B5001A" />
+                <Stop offset="50%"  stopColor="#E8374A" />
+                <Stop offset="100%" stopColor="#D42035" />
+              </LinearGradient>
             <LinearGradient id="shine" x1="0" y1="0" x2="1" y2="1">
               <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity="0.15" />
               <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0.00" />
@@ -174,7 +174,7 @@ function LoginScreen({mobile, setMobile, onOtpSent, onGoToRegister, registeredNa
 
   return (
     <SafeAreaView style={s.screen} edges={['bottom']}>
-      <StatusBar barStyle="light-content" backgroundColor="#C94455" />
+      <StatusBar barStyle="light-content" backgroundColor="#B5001A" />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{flex: 1}}>
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
           contentContainerStyle={{flexGrow: 1}}>
@@ -408,7 +408,7 @@ function OtpScreen({mobile, backendOTP = '', onNewOTP, onVerify, onBack}) {
 
   return (
     <SafeAreaView style={s.screen} edges={['bottom']}>
-      <StatusBar barStyle="light-content" backgroundColor="#C94455" />
+      <StatusBar barStyle="light-content" backgroundColor="#B5001A" />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{flex: 1}}>
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
           contentContainerStyle={{flexGrow: 1}}>
@@ -504,10 +504,10 @@ function OtpScreen({mobile, backendOTP = '', onNewOTP, onVerify, onBack}) {
               <View style={s.timerRow}>
                 {/* circular countdown */}
                 <View style={s.timerCircleWrap}>
-                  <Svg width={40} height={40} viewBox="0 0 40 40">
-                    <Circle cx="20" cy="20" r="16" fill="none" stroke="#F0E0E0" strokeWidth={3} />
-                    <Circle cx="20" cy="20" r="16" fill="none"
-                      stroke={timer > 0 ? RED : '#E0E0E0'} strokeWidth={3}
+                 <Svg width={40} height={40} viewBox="0 0 40 40">
+                   <Circle cx="20" cy="20" r="16" fill="none" stroke="#FFD0D5" strokeWidth={3} />
+                   <Circle cx="20" cy="20" r="16" fill="none"
+                     stroke={timer > 0 ? RED : '#E0E0E0'} strokeWidth={3}
                       strokeDasharray={`${progress * 100.5} 100.5`}
                       strokeLinecap="round" transform="rotate(-90 20 20)" />
                   </Svg>
@@ -569,10 +569,10 @@ function OtpScreen({mobile, backendOTP = '', onNewOTP, onVerify, onBack}) {
 
 /* ─── Styles ─────────────────────────────────────────────── */
 const s = StyleSheet.create({
-  screen: {flex: 1, backgroundColor: '#F4F4F4'},
+  screen: {flex: 1, backgroundColor: '#F5F7FA'},
 
   /* ── Hero ── */
-  header: {width: '100%', height: HEADER_H, backgroundColor: '#C94455', overflow: 'hidden'},
+  header: {width: '100%', height: HEADER_H, backgroundColor: '#B5001A', overflow: 'hidden'},
   headerContent: {flex: 1, alignItems: 'center', justifyContent: 'center'},
 
   /* Logo in white rounded card */
@@ -690,9 +690,9 @@ const s = StyleSheet.create({
     marginHorizontal: 14, marginTop: 14, marginBottom: 8,
     backgroundColor: '#FFFFFF', borderRadius: 20,
     paddingHorizontal: 16, paddingTop: 16, paddingBottom: 18,
-    shadowColor: RED, shadowOffset: {width: 0, height: 4},
-    shadowOpacity: 0.08, shadowRadius: 16, elevation: 5,
-    borderWidth: 1, borderColor: 'rgba(197,31,43,0.07)',
+    shadowColor: '#1B2A4A', shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.10, shadowRadius: 16, elevation: 5,
+    borderWidth: 1, borderColor: '#E4E9F0',
   },
   cardHeaderRow: {flexDirection: 'row', alignItems: 'center', marginBottom: 12},
   cardIconBg: {
@@ -702,7 +702,7 @@ const s = StyleSheet.create({
   cardTitle: {fontSize: 16, fontWeight: '800', color: DARK, marginBottom: 2},
   cardSub:   {fontSize: 11, color: GREY},
 
-  divider: {height: 1, backgroundColor: '#F0E0E0', marginBottom: 16},
+  divider: {height: 1, backgroundColor: '#E4E9F0', marginBottom: 16},
 
   /* ── Field ── */
   fieldLabel: {fontSize: 12, fontWeight: '700', color: '#374151', letterSpacing: 0.3, marginBottom: 7},
@@ -712,7 +712,7 @@ const s = StyleSheet.create({
     borderColor: '#E5E7EB', backgroundColor: '#FAFAFA',
     flexDirection: 'row', alignItems: 'center', marginBottom: 4,
   },
-  inputRowActive: {borderColor: RED, backgroundColor: '#FFF8F8'},
+  inputRowActive: {borderColor: RED, backgroundColor: '#FAFBFF'},
   inputIconWrap:  {paddingLeft: 14, paddingRight: 8},
   dialCode:       {paddingRight: 8},
   dialCodeText:   {fontSize: 15, fontWeight: '700', color: DARK},
@@ -764,14 +764,14 @@ const s = StyleSheet.create({
   otpSentSub:   {fontSize: 13, color: GREY},
   otpSentMobile:{fontWeight: '800', color: RED},
 
-  /* ── Backend OTP display card (OTP screen) ── */
+  /* ── Backend OTP display card (OTP screen) — navy themed ── */
   otpDisplayCard: {
     marginHorizontal: 14, marginTop: 12, marginBottom: 8,
     backgroundColor: '#FFFFFF', borderRadius: 18,
     paddingHorizontal: 16, paddingVertical: 14,
-    borderWidth: 2, borderColor: RED,
+    borderWidth: 1.5, borderColor: '#FFD0D5',
     shadowColor: RED, shadowOffset: {width: 0, height: 4},
-    shadowOpacity: 0.16, shadowRadius: 12, elevation: 6,
+    shadowOpacity: 0.12, shadowRadius: 12, elevation: 6,
   },
   otpDisplayHeader: {flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8},
   otpDisplayBadge: {
@@ -783,16 +783,16 @@ const s = StyleSheet.create({
   otpDisplayBox: {
     width: OTP_BOX_W, height: 44, borderRadius: 10,
     backgroundColor: RED, alignItems: 'center', justifyContent: 'center',
-    shadowColor: RED, shadowOpacity: 0.22, shadowRadius: 4,
+    shadowColor: RED, shadowOpacity: 0.18, shadowRadius: 4,
     shadowOffset: {width: 0, height: 2}, elevation: 3,
   },
   otpDisplayBoxEmpty: {
     backgroundColor: PINK, borderWidth: 1.5,
-    borderColor: RED, borderStyle: 'dashed',
+    borderColor: '#FFD0D5', borderStyle: 'dashed',
     shadowOpacity: 0, elevation: 0,
   },
   otpDisplayDigit:    {fontSize: 20, fontWeight: '900', color: '#FFF'},
-  otpDisplayDigitDim: {fontSize: 17, color: 'rgba(197,31,43,0.4)'},
+  otpDisplayDigitDim: {fontSize: 17, color: 'rgba(200,16,46,0.35)'},
   otpDisplayHint:     {fontSize: 11, color: GREY, textAlign: 'center'},
 
   /* ── OTP input boxes ── */
@@ -803,7 +803,7 @@ const s = StyleSheet.create({
     textAlign: 'center', fontSize: 20, fontWeight: '800',
     color: DARK, padding: 0, includeFontPadding: false,
   },
-  otpBoxFilled: {borderColor: RED, backgroundColor: '#FFF5F5', color: RED},
+  otpBoxFilled: {borderColor: RED, backgroundColor: '#FFF0F2', color: RED},
 
   /* ── Timer + Resend ── */
   timerRow: {
@@ -822,7 +822,7 @@ const s = StyleSheet.create({
     marginHorizontal: 14, marginTop: 10, marginBottom: 6,
     backgroundColor: PINK, borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 12,
-    borderWidth: 1, borderColor: 'rgba(197,31,43,0.15)',
+    borderWidth: 1, borderColor: '#FFD0D5',
   },
   infoStripText: {flex: 1, fontSize: 12, color: '#555', lineHeight: 18},
 });

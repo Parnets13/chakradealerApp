@@ -8,11 +8,18 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  ActivityIndicator, Alert, Modal, Pressable, RefreshControl,
+  ActivityIndicator, Alert, Modal, Platform, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+
+// Safe LinearGradient fallback — no crash if package missing
+let LinearGradient;
+try { LinearGradient = require('react-native-linear-gradient').default; } catch (_) { LinearGradient = null; }
+const NavGradient = ({ style, children }) => LinearGradient
+  ? <LinearGradient colors={['#E8374A', '#C8102E']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={style}>{children}</LinearGradient>
+  : <View style={[style, { backgroundColor: '#E8374A' }]}>{children}</View>;
 
 // ─── apiService (dealer backend only — no admin calls) ────────────────────────
 let apiService;
@@ -30,20 +37,34 @@ const ORDERS_STORAGE_KEY = '@dealer_orders_local';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const C = {
-  red: '#C51F2B', redDk: '#A3101B',
-  bg: '#F2F0EC', white: '#FFFFFF',
-  text: '#1A1A1A', sub: '#555', muted: '#888', line: '#E8E4DE',
-  green: '#1A7A3C', greenBg: '#E4F5EC',
-  amber: '#B86A00', amberBg: '#FEF3E2',
-  blue: '#1565C0', blueBg: '#E3F0FF',
-  teal: '#1A7A6E', tealBg: '#E4F5F3',
-  purple: '#6A1B9A', purpleBg: '#F3E5F5',
-  navy: '#0277BD', navyBg: '#E1F5FE',
-  olive: '#558B2F', oliveBg: '#F1F8E9',
+  red: '#E8374A', redDk: '#C8102E',          // accent only — icons, badges, buttons
+  bg: '#F1F4F8', white: '#FFFFFF',
+  text: '#0F172A', sub: '#374151', muted: '#6B7280', line: '#E4E9F0',
+  green: '#16A34A', greenBg: '#DCFCE7',
+  amber: '#D97706', amberBg: '#FEF3C7',
+  blue: '#2563EB', blueBg: '#DBEAFE',
+  teal: '#0D9488', tealBg: '#CCFBF1',
+  purple: '#7C3AED', purpleBg: '#EDE9FE',
+  navy: '#1D4ED8', navyBg: '#DBEAFE',
+  olive: '#65A30D', oliveBg: '#ECFCCB',
 };
-const sh = { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 6, elevation: 3 };
+const sh  = { shadowColor: '#1B2A4A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 };
+const sh2 = { shadowColor: '#1B2A4A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.10, shadowRadius: 14, elevation: 5 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+// Status chip configs — label + icon for filter bar
+const STATUS_META = {
+  'All':              { icon: 'view-grid-outline',         color: '#64748B' },
+  'Order Placed':     { icon: 'clipboard-text-outline',    color: '#2563EB' },
+  'Pending Approval': { icon: 'clock-outline',             color: '#D97706' },
+  'Approved':         { icon: 'check-circle-outline',      color: '#16A34A' },
+  'Processing':       { icon: 'cog-outline',               color: '#7C3AED' },
+  'Shipped':          { icon: 'truck-delivery-outline',    color: '#0891B2' },
+  'Delivered':        { icon: 'home-check-outline',        color: '#16A34A' },
+  'Cancelled':        { icon: 'close-circle-outline',      color: '#E8374A' },
+  'Rejected':         { icon: 'cancel',                    color: '#E8374A' },
+};
+
 const ALL_STATUSES = [
   'All','Order Placed','Pending Approval','Approved','Rejected',
   'Picking Started','Picking Completed','Sorting Started','Sorting Completed',
@@ -672,67 +693,89 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
               {selectedCompany && (
                 <>
                   <Lbl t="SEARCH & SELECT PRODUCT *" />
-                  <View style={{ position: 'relative', zIndex: 10 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: selectedProduct ? C.red : C.line, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, backgroundColor: C.white, gap: 8 }}>
-                      <Icon name="magnify" size={17} color={C.muted} />
-                      <TextInput
-                        style={{ flex: 1, fontSize: 14, color: C.text }}
-                        value={productSearch}
-                        onChangeText={handleProductSearch}
-                        onFocus={() => { setShowProductList(true); if (!productSearch) setProducts(allProducts.filter(p => detectCompany(p.name || p.itemName || '')?.toLowerCase() === selectedCompany.name.toLowerCase())); }}
-                        placeholder={loadingProducts ? 'Loading…' : `Search ${selectedCompany.name} products…`}
-                        placeholderTextColor={C.muted}
-                        returnKeyType="search"
-                      />
-                      {loadingProducts && <ActivityIndicator size="small" color={C.red} />}
-                      {productSearch.length > 0 && !loadingProducts && (
-                        <Pressable onPress={() => { setProductSearch(''); setSelectedProduct(null); handleCompanySelect(selectedCompany); setShowProductList(false); }} hitSlop={8}>
-                          <Icon name="close-circle" size={16} color={C.muted} />
-                        </Pressable>
-                      )}
-                    </View>
+                  {/* Tappable field — opens the product picker Modal */}
+                  <Pressable
+                    style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: selectedProduct ? C.red : C.line, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: C.white, gap: 8 }}
+                    onPress={() => {
+                      if (!productSearch) setProducts(allProducts.filter(p => detectCompany(p.name || p.itemName || '')?.toLowerCase() === selectedCompany.name.toLowerCase()));
+                      setShowProductList(true);
+                    }}
+                  >
+                    <Icon name="magnify" size={17} color={C.muted} />
+                    <Text style={{ flex: 1, fontSize: 14, color: selectedProduct ? C.text : C.muted }} numberOfLines={1}>
+                      {selectedProduct ? (selectedProduct.name || selectedProduct.itemName || 'Selected') : (loadingProducts ? 'Loading…' : `Search ${selectedCompany.name} products…`)}
+                    </Text>
+                    {loadingProducts
+                      ? <ActivityIndicator size="small" color={C.red} />
+                      : <Icon name="chevron-down" size={17} color={C.muted} />}
+                  </Pressable>
 
-                    {/* Dropdown results */}
-                    {showProductList && products.length > 0 && (
-                      <View style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: C.white, borderRadius: 12, borderWidth: 1.5, borderColor: C.line, maxHeight: 240, zIndex: 999, marginTop: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 10, elevation: 8 }}>
-                        <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                          {products.slice(0, 40).map((prod, idx) => {
-                            const nm    = prod.name || prod.itemName || '—';
-                            const stock = prod.stock ?? prod.qty ?? prod.currentQuantity ?? 0;
-                            const price = prod.unitPrice ?? prod.sellingPrice ?? prod.price ?? 0;
-                            const isSelected = selectedProduct?.id === prod.id || selectedProduct?._id === prod._id;
-                            return (
-                              <Pressable
-                                key={String(prod.id || prod._id || idx)}
-                                style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: C.line, backgroundColor: isSelected ? '#FFF5F5' : C.white }}
-                                onPress={() => handleProductSelect(prod)}>
-                                <View style={{ flex: 1 }}>
-                                  <Text style={{ fontSize: 13, fontWeight: '700', color: C.text }} numberOfLines={2}>{nm}</Text>
-                                  {prod.sku ? <Text style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>SKU: {prod.sku}</Text> : null}
-                                </View>
-                                <View style={{ alignItems: 'flex-end', marginLeft: 8 }}>
-                                  <Text style={{ fontSize: 12, fontWeight: '800', color: stock > 0 ? C.green : C.red }}>{stock} {prod.unit || 'pcs'}</Text>
-                                  {price > 0 ? <Text style={{ fontSize: 11, color: C.amber, fontWeight: '700' }}>₹{numFmt(price)}</Text> : null}
-                                </View>
-                                {isSelected && <Icon name="check-circle" size={16} color={C.red} style={{ marginLeft: 6 }} />}
-                              </Pressable>
-                            );
-                          })}
-                          {products.length === 0 && (
+                  {/* Product picker Modal — same pattern as SDropdown */}
+                  <Modal visible={showProductList} transparent animationType="fade" onRequestClose={() => setShowProductList(false)}>
+                    <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }} onPress={() => setShowProductList(false)}>
+                      <Pressable style={{ backgroundColor: C.white, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, paddingBottom: 36, maxHeight: '80%' }} onPress={() => {}}>
+                        {/* Sheet header */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                          <Text style={{ fontSize: 16, fontWeight: '900', color: C.text }}>Select Product</Text>
+                          <Pressable onPress={() => setShowProductList(false)}><Icon name="close" size={20} color={C.text} /></Pressable>
+                        </View>
+                        {/* Search input inside Modal */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderColor: C.line, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, marginBottom: 8 }}>
+                          <Icon name="magnify" size={16} color={C.muted} />
+                          <TextInput
+                            style={{ flex: 1, fontSize: 14, color: C.text }}
+                            value={productSearch}
+                            onChangeText={handleProductSearch}
+                            placeholder={`Search ${selectedCompany.name} products…`}
+                            placeholderTextColor={C.muted}
+                            autoFocus
+                            returnKeyType="search"
+                          />
+                          {productSearch.length > 0 && (
+                            <Pressable onPress={() => { setProductSearch(''); handleCompanySelect(selectedCompany); }} hitSlop={8}>
+                              <Icon name="close-circle" size={15} color={C.muted} />
+                            </Pressable>
+                          )}
+                        </View>
+                        {/* Scrollable list */}
+                        <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                          {products.length === 0 ? (
                             <View style={{ padding: 20, alignItems: 'center' }}>
-                              <Text style={{ fontSize: 13, color: C.muted }}>No items found for {selectedCompany.name}</Text>
+                              {productSearch.length > 0
+                                ? <>
+                                    <Icon name="package-variant-closed-remove" size={24} color={C.muted} />
+                                    <Text style={{ fontSize: 13, color: C.muted, marginTop: 6 }}>No products match "{productSearch}"</Text>
+                                  </>
+                                : <Text style={{ fontSize: 13, color: C.muted }}>No items found for {selectedCompany.name}</Text>
+                              }
                             </View>
+                          ) : (
+                            products.map((prod, idx) => {
+                              const nm    = prod.name || prod.itemName || '—';
+                              const stock = prod.stock ?? prod.qty ?? prod.currentQuantity ?? 0;
+                              const price = prod.unitPrice ?? prod.sellingPrice ?? prod.price ?? 0;
+                              const isSelected = selectedProduct?.id === prod.id || selectedProduct?._id === prod._id;
+                              return (
+                                <Pressable
+                                  key={String(prod.id || prod._id || idx)}
+                                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: C.line, backgroundColor: isSelected ? '#FFF5F5' : C.white }}
+                                  onPress={() => { handleProductSelect(prod); setShowProductList(false); }}>
+                                  <View style={{ flex: 1 }}>
+                                   <Text style={{ fontSize: 14, fontWeight: '700', color: isSelected ? C.red : C.text }} numberOfLines={2}>{nm}</Text>
+                                 </View>
+                                  <View style={{ alignItems: 'flex-end', marginLeft: 8 }}>
+                                    <Text style={{ fontSize: 12, fontWeight: '800', color: stock > 0 ? C.green : C.red }}>{stock} {prod.unit || 'pcs'}</Text>
+                                    {price > 0 ? <Text style={{ fontSize: 11, color: C.amber, fontWeight: '700' }}>₹{numFmt(price)}</Text> : null}
+                                  </View>
+                                  {isSelected && <Icon name="check" size={15} color={C.red} style={{ marginLeft: 6 }} />}
+                                </Pressable>
+                              );
+                            })
                           )}
                         </ScrollView>
-                      </View>
-                    )}
-                    {showProductList && !loadingProducts && products.length === 0 && productSearch.length > 0 && (
-                      <View style={{ backgroundColor: C.white, borderRadius: 12, borderWidth: 1.5, borderColor: C.line, padding: 16, marginTop: 4, alignItems: 'center' }}>
-                        <Icon name="package-variant-closed-remove" size={24} color={C.muted} />
-                        <Text style={{ fontSize: 13, color: C.muted, marginTop: 6 }}>No products match "{productSearch}"</Text>
-                      </View>
-                    )}
-                  </View>
+                      </Pressable>
+                    </Pressable>
+                  </Modal>
                 </>
               )}
 
@@ -752,12 +795,6 @@ function CreateOrderModal({ visible, onClose, onCreated, dealer }) {
                     <Text style={{ flex: 1, fontSize: 13, fontWeight: '800', color: C.text }}>{selectedProduct.name || '—'}</Text>
                   </View>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-                    {selectedProduct.sku ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.blueBg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
-                        <Icon name="barcode" size={11} color={C.blue} />
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: C.blue }}>SKU: {selectedProduct.sku}</Text>
-                      </View>
-                    ) : null}
                     {unit ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F3E5F5', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5 }}>
                         <Icon name="package-up" size={11} color={C.purple} />
@@ -1518,12 +1555,15 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
   }, [order]);
 
   return (
-    <View style={oc.card}>
+    <View style={[oc.card, { borderLeftWidth: 3, borderLeftColor: st.c }]}>
+
       {/* ── Top: Order ID + Status ── */}
       <View style={oc.topRow}>
         <View style={{ flex: 1 }}>
           <View style={oc.idRow}>
-            <Icon name="receipt" size={13} color={C.red} />
+            <View style={oc.idIconWrap}>
+              <Icon name="receipt" size={11} color={C.red} />
+            </View>
             <Text style={oc.idTxt} numberOfLines={1}>{orderId}</Text>
             {order._isLocal && (
               <View style={oc.localChip}>
@@ -1532,16 +1572,16 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
             )}
           </View>
           <Text style={oc.dateTxt}>
-            <Icon name="calendar-outline" size={10} color={C.muted} /> {fmtDate(order.createdAt || order.orderDate)}
+            {fmtDate(order.createdAt || order.orderDate)}
           </Text>
         </View>
-        <View style={[oc.statusBadge, { backgroundColor: st.bg }]}>
+        <View style={[oc.statusBadge, { backgroundColor: st.bg, borderColor: st.c + '40' }]}>
           <View style={[oc.statusDot, { backgroundColor: st.c }]} />
           <Text style={[oc.statusTxt, { color: st.c }]}>{order.status || 'Unknown'}</Text>
         </View>
       </View>
 
-      {/* ── Invoice info banner (shown when invoice exists) ── */}
+      {/* ── Invoice info banner ── */}
       {invoiceInfo ? (
         <View style={oc.invBanner}>
           <Icon name="file-document-check" size={13} color={C.green} />
@@ -1578,42 +1618,46 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
       {firstItem && (
         <View style={oc.productRow}>
           <View style={oc.productIcon}>
-            <Icon name="package-variant" size={16} color={C.red} />
+            <Icon name="package-variant" size={17} color={C.red} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={oc.productName} numberOfLines={1}>{firstItem.name || '—'}</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
+            <View style={{ flexDirection: 'row', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
               {firstItem.category ? (
-                <Text style={oc.metaTag}>
-                  <Icon name="tag-outline" size={9} color={C.muted} /> {firstItem.category}
-                </Text>
+                <View style={oc.microChip}>
+                  <Icon name="tag-outline" size={9} color={C.muted} />
+                  <Text style={oc.microChipTxt}>{firstItem.category}</Text>
+                </View>
               ) : null}
               {firstItem.quantity ? (
-                <Text style={oc.metaTag}>Qty: {firstItem.quantity} {firstItem.packSize || ''}</Text>
+                <View style={oc.microChip}>
+                  <Icon name="cube-outline" size={9} color={C.muted} />
+                  <Text style={oc.microChipTxt}>Qty {firstItem.quantity}{firstItem.packSize ? ` ${firstItem.packSize}` : ''}</Text>
+                </View>
               ) : null}
               {firstItem.sku ? (
-                <Text style={oc.metaTag}>SKU: {firstItem.sku}</Text>
+                <View style={oc.microChip}>
+                  <Text style={oc.microChipTxt}>SKU: {firstItem.sku}</Text>
+                </View>
               ) : null}
               {firstItem.unitPrice > 0 ? (
-                <Text style={[oc.metaTag, { color: C.amber, fontWeight: '700' }]}>
-                  ₹{numFmt(firstItem.unitPrice)}/unit
-                </Text>
+                <View style={[oc.microChip, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }]}>
+                  <Text style={[oc.microChipTxt, { color: C.amber, fontWeight: '800' }]}>₹{numFmt(firstItem.unitPrice)}/unit</Text>
+                </View>
               ) : null}
             </View>
           </View>
-          <View style={{ alignItems: 'flex-end', gap: 4 }}>
-            {totalAmt != null && (
-              <View style={oc.amtBox}>
-                <Text style={oc.amt}>₹{numFmt(totalAmt)}</Text>
-                <Text style={oc.amtLbl}>Total</Text>
-              </View>
-            )}
-          </View>
+          {totalAmt != null && (
+            <View style={oc.amtBox}>
+              <Text style={oc.amt}>₹{numFmt(totalAmt)}</Text>
+              <Text style={oc.amtLbl}>Total</Text>
+            </View>
+          )}
         </View>
       )}
 
-      {/* ── Financial summary chips ── */}
-      {(order.subTotal > 0 || order.totalGst > 0) && (
+      {/* ── Financial chips + priority ── */}
+      {(order.subTotal > 0 || order.totalGst > 0 || order.paymentMode || (order.priority && order.priority !== 'Normal')) && (
         <View style={oc.finChips}>
           {order.subTotal > 0 && (
             <View style={oc.finChip}>
@@ -1628,13 +1672,16 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
             </View>
           )}
           {order.paymentMode ? (
-            <View style={[oc.finChip, { backgroundColor: C.greenBg }]}>
+            <View style={[oc.finChip, { backgroundColor: '#DCFCE7', borderColor: '#A5D6B0' }]}>
               <Icon name="cash" size={9} color={C.green} />
               <Text style={[oc.finChipVal, { color: C.green }]}>{order.paymentMode}</Text>
             </View>
           ) : null}
           {order.priority && order.priority !== 'Normal' && (
-            <View style={[oc.finChip, { backgroundColor: order.priority === 'Urgent' ? '#FFF5F5' : C.amberBg }]}>
+            <View style={[oc.finChip, {
+              backgroundColor: order.priority === 'Urgent' ? '#FFF1F2' : C.amberBg,
+              borderColor: order.priority === 'Urgent' ? '#FECDD3' : '#FDE68A',
+            }]}>
               <Icon name="flag" size={9} color={order.priority === 'Urgent' ? C.red : C.amber} />
               <Text style={[oc.finChipVal, { color: order.priority === 'Urgent' ? C.red : C.amber }]}>{order.priority}</Text>
             </View>
@@ -1644,36 +1691,38 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
 
       {/* ── Action buttons ── */}
       <View style={oc.actRow}>
-        <Pressable style={[oc.actBtn, { backgroundColor: '#5B21B6' }]}
+        <Pressable style={[oc.actBtn, oc.actBtnTrack]}
           onPress={() => onTrack && onTrack(orderId, order)}>
-          <Icon name="map-marker-path" size={12} color={C.white} />
-          <Text style={oc.actTxt}>Track</Text>
+          <Icon name="map-marker-path" size={13} color="#7C3AED" />
+          <Text style={[oc.actTxt, { color: '#7C3AED' }]}>Track</Text>
         </Pressable>
-        <Pressable style={[oc.actBtn, { backgroundColor: C.blue }]}
+        <Pressable style={[oc.actBtn, oc.actBtnView]}
           onPress={() => onView && onView(order)}>
-          <Text style={oc.actTxt}>View</Text>
+          <Icon name="eye-outline" size={13} color={C.blue} />
+          <Text style={[oc.actTxt, { color: C.blue }]}>View</Text>
         </Pressable>
-        <Pressable style={[oc.actBtn, { backgroundColor: canEdit ? '#1565C0' : '#B0BEC5' }]}
+        <Pressable style={[oc.actBtn, canEdit ? oc.actBtnEdit : oc.actBtnDis]}
           onPress={() => canEdit && onEdit && onEdit(order)}
           disabled={!canEdit}>
-          <Text style={oc.actTxt}>Edit</Text>
+          <Icon name="pencil-outline" size={13} color={canEdit ? '#0369A1' : C.muted} />
+          <Text style={[oc.actTxt, { color: canEdit ? '#0369A1' : C.muted }]}>Edit</Text>
         </Pressable>
-        <Pressable style={[oc.actBtn, { backgroundColor: '#2E7D32' }]}
+        <Pressable style={[oc.actBtn, oc.actBtnPdf]}
           onPress={() => onDownloadPdf && onDownloadPdf(order)}>
-          <Text style={oc.actTxt}>PDF</Text>
+          <Icon name="file-pdf-box" size={13} color="#16A34A" />
+          <Text style={[oc.actTxt, { color: '#16A34A' }]}>PDF</Text>
         </Pressable>
-        <Pressable style={[oc.actBtn, { backgroundColor: canPlace ? '#1A7A3C' : '#B0BEC5' }]}
+        <Pressable style={[oc.actBtn, canPlace ? oc.actBtnPlace : oc.actBtnDis]}
           onPress={() => canPlace && onPlaceOrder && onPlaceOrder(order)}
           disabled={!canPlace}>
-          <Icon name="send" size={12} color={C.white} />
-          <Text style={oc.actTxt}>Place Order</Text>
+          <Icon name="send-outline" size={13} color={canPlace ? C.red : C.muted} />
+          <Text style={[oc.actTxt, { color: canPlace ? C.red : C.muted }]}>Place</Text>
         </Pressable>
       </View>
 
-      {/* ── Cancel + Delete row (destructive actions) ── */}
+      {/* ── Cancel + Delete row ── */}
       {(['Order Placed', 'Pending Approval', 'Cancelled'].includes(order.status)) && (
         <View style={oc.dangerRow}>
-          {/* Cancel — only for active orders */}
           {['Order Placed', 'Pending Approval'].includes(order.status) && (
             <Pressable
               style={oc.cancelBtn}
@@ -1699,12 +1748,10 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
                   ]
                 );
               }}>
-              <Icon name="close-circle-outline" size={13} color={C.red} />
+              <Icon name="close-circle-outline" size={14} color={C.red} />
               <Text style={oc.cancelTxt}>Cancel Order</Text>
             </Pressable>
           )}
-
-          {/* Delete */}
           <Pressable
             style={oc.deleteBtn}
             onPress={() => {
@@ -1729,7 +1776,7 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
                 ]
               );
             }}>
-            <Icon name="trash-can-outline" size={13} color="#FFF" />
+            <Icon name="trash-can-outline" size={14} color="#FFF" />
             <Text style={oc.deleteTxt}>Delete</Text>
           </Pressable>
         </View>
@@ -1739,48 +1786,71 @@ function OrderCard({ order, onTrack, onEdit, onDelete, onPlaceOrder, onView, onD
 }
 
 const oc = StyleSheet.create({
-  card:        { backgroundColor: C.white, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 14, marginBottom: 12, ...sh },
+  // Card — white with status-coloured left accent border
+  card:        { backgroundColor: C.white, borderRadius: 16, borderWidth: 1, borderColor: '#EEF0F5', padding: 14, marginBottom: 12, ...sh2, overflow: 'hidden' },
+
+  // Header row
   topRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
-  idRow:       { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 },
-  idTxt:       { fontSize: 13, fontWeight: '900', color: C.text, flex: 1 },
-  localChip:   { backgroundColor: C.amberBg, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
-  localTxt:    { fontSize: 8, fontWeight: '900', color: C.amber },
-  dateTxt:     { fontSize: 10, color: C.muted, fontWeight: '600', marginLeft: 1 },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, flexShrink: 0 },
+  idRow:       { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
+  idIconWrap:  { width: 22, height: 22, borderRadius: 6, backgroundColor: '#FFF1F2', alignItems: 'center', justifyContent: 'center' },
+  idTxt:       { fontSize: 13, fontWeight: '900', color: C.text, flex: 1, letterSpacing: 0.2 },
+  localChip:   { backgroundColor: '#FEF3C7', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: '#FDE68A' },
+  localTxt:    { fontSize: 8, fontWeight: '900', color: '#B45309' },
+  dateTxt:     { fontSize: 10, color: C.muted, fontWeight: '600', marginLeft: 28 },
+
+  // Status badge
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, flexShrink: 0, borderWidth: 1 },
   statusDot:   { width: 6, height: 6, borderRadius: 3 },
-  statusTxt:   { fontSize: 9, fontWeight: '900', textTransform: 'uppercase' },
-  // Invoice banner — shown when invoice is generated for this order
-  invBanner:   { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.greenBg, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 6, borderWidth: 1, borderColor: '#A5D6B0' },
-  invBannerNo: { flex: 1, fontSize: 12, fontWeight: '800', color: C.green },
-  invBannerAmt:{ fontSize: 12, fontWeight: '900', color: C.green },
-  invCountChip:{ backgroundColor: '#fff', borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2 },
-  invCountTxt: { fontSize: 9, fontWeight: '800', color: C.green },
-  dealerRow:   { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10, backgroundColor: '#F0F4FF', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
-  dealerName:  { fontSize: 12, fontWeight: '800', color: C.blue, flex: 1 },
+  statusTxt:   { fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5 },
+
+  // Invoice banner
+  invBanner:   { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F0FDF4', borderRadius: 9, paddingHorizontal: 10, paddingVertical: 7, marginBottom: 8, borderWidth: 1, borderColor: '#A5D6B0' },
+  invBannerNo: { flex: 1, fontSize: 12, fontWeight: '800', color: '#15803D' },
+  invBannerAmt:{ fontSize: 12, fontWeight: '900', color: '#15803D' },
+  invCountChip:{ backgroundColor: '#fff', borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2, borderWidth: 1, borderColor: '#A5D6B0' },
+  invCountTxt: { fontSize: 9, fontWeight: '800', color: '#15803D' },
+
+  // Dealer row
+  dealerRow:   { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10, backgroundColor: '#EFF6FF', borderRadius: 9, paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1, borderColor: '#BFDBFE' },
+  dealerName:  { fontSize: 12, fontWeight: '800', color: '#1D4ED8', flex: 1 },
   dealerSep:   { color: C.muted, fontSize: 12 },
   dealerMobile:{ fontSize: 11, fontWeight: '600', color: C.muted },
-  div:         { height: 1, backgroundColor: C.line, marginBottom: 10 },
-  productRow:  { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#F8F9FA', borderRadius: 10, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: '#EEEEE0' },
-  productIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(197,31,43,0.08)', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  productName: { fontSize: 13, fontWeight: '800', color: C.text },
-  metaTag:     { fontSize: 10, color: C.muted, fontWeight: '600' },
-  amtBox:      { alignItems: 'flex-end', marginLeft: 8 },
+
+  // Divider
+  div:         { height: 1, backgroundColor: '#F1F5F9', marginBottom: 10 },
+
+  // Product row
+  productRow:  { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#FAFBFC', borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#EEF0F5', gap: 10 },
+  productIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#FFF1F2', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  productName: { fontSize: 13, fontWeight: '800', color: C.text, marginBottom: 2 },
+  microChip:   { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#F3F4F6', borderRadius: 5, paddingHorizontal: 6, paddingVertical: 3, borderWidth: 1, borderColor: '#E5E7EB' },
+  microChipTxt:{ fontSize: 9, fontWeight: '700', color: C.muted },
+  amtBox:      { alignItems: 'flex-end', flexShrink: 0, marginLeft: 4 },
   amt:         { fontSize: 15, fontWeight: '900', color: C.red },
-  amtLbl:      { fontSize: 9, fontWeight: '700', color: C.muted, marginTop: 1 },
+  amtLbl:      { fontSize: 9, fontWeight: '700', color: C.muted, marginTop: 2, textAlign: 'right' },
+
+  // Financial chips
   finChips:    { flexDirection: 'row', gap: 6, marginBottom: 10, flexWrap: 'wrap' },
-  finChip:     { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F3F4F6', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
+  finChip:     { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F8F9FA', borderRadius: 7, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: '#E9ECEF' },
   finChipLbl:  { fontSize: 9, color: C.muted, fontWeight: '700' },
-  finChipVal:  { fontSize: 10, fontWeight: '800', color: C.text },
-  metaRow:     { flexDirection: 'row', gap: 6, marginBottom: 8, flexWrap: 'wrap' },
-  metaChip:    { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
-  metaTxt:     { fontSize: 10, fontWeight: '700' },
-  actRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.line, gap: 6, flexWrap: 'wrap' },
-  actBtn:      { flex: 1, minWidth: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 8 },
-  actTxt:      { color: C.white, fontSize: 10, fontWeight: '800', textAlign: 'center' },
+  finChipVal:  { fontSize: 10, fontWeight: '800', color: C.sub },
+
+  // Action row — outlined ghost buttons
+  actRow:      { flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9', gap: 6 },
+  actBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8, borderRadius: 9, borderWidth: 1.5 },
+  actBtnTrack: { backgroundColor: '#FAF5FF', borderColor: '#DDD6FE' },
+  actBtnView:  { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
+  actBtnEdit:  { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' },
+  actBtnPdf:   { backgroundColor: '#F0FDF4', borderColor: '#A5D6B0' },
+  actBtnPlace: { backgroundColor: '#FFF1F2', borderColor: '#FECDD3' },
+  actBtnDis:   { backgroundColor: '#F9FAFB', borderColor: '#E5E7EB' },
+  actTxt:      { fontSize: 10, fontWeight: '800', textAlign: 'center' },
+
+  // Danger row
   dangerRow:   { flexDirection: 'row', gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#FEE2E2' },
-  cancelBtn:   { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 9, borderWidth: 1.5, borderColor: C.red, backgroundColor: '#FFF5F5' },
+  cancelBtn:   { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 9, borderWidth: 1.5, borderColor: '#FECDD3', backgroundColor: '#FFF1F2' },
   cancelTxt:   { color: C.red, fontSize: 11, fontWeight: '800' },
-  deleteBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, paddingHorizontal: 18, borderRadius: 9, backgroundColor: '#7F1D1D' },
+  deleteBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, paddingHorizontal: 18, borderRadius: 9, backgroundColor: '#EF4444' },
   deleteTxt:   { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
 });
 
@@ -1997,46 +2067,77 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
   return (
     <SafeAreaView style={pg.screen} edges={['top']}>
 
-      {/* ── Navbar ── */}
-      <View style={pg.navbar}>
+      {/* ── Navbar — gradient header ── */}
+      <NavGradient style={pg.navbar}>
         <Pressable onPress={onBack} style={pg.backBtn}>
           <Icon name="arrow-left" size={22} color={C.white} />
         </Pressable>
-        <Text style={pg.navTitle}>My Orders</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={pg.navTitle}>My Orders</Text>
+          {orders.length > 0 && (
+            <Text style={pg.navSub}>{orders.length} total</Text>
+          )}
+        </View>
         <Pressable onPress={() => setShowCreate(true)} style={pg.createPill}>
           <Icon name="plus" size={15} color={C.red} />
           <Text style={pg.createTxt}>Create</Text>
         </Pressable>
-      </View>
+      </NavGradient>
 
       {/* ── Search ── */}
       <View style={pg.searchWrap}>
-        <Icon name="magnify" size={18} color={C.muted} />
+        <View style={pg.searchIconWrap}>
+          <Icon name="magnify" size={17} color={C.muted} />
+        </View>
         <TextInput style={pg.searchIn} placeholder="Search by order ID, customer…"
           placeholderTextColor={C.muted} value={search} onChangeText={setSearch}
           returnKeyType="search" />
         {search.length > 0 && (
-          <Pressable onPress={() => setSearch('')}>
+          <Pressable onPress={() => setSearch('')} style={{ padding: 2 }}>
             <Icon name="close-circle" size={17} color={C.muted} />
           </Pressable>
         )}
       </View>
 
-      {/* ── Filter chips ── */}
+      {/* ── Status filter — pill tabs (Swiggy/Amazon style) ── */}
       <View style={pg.filterBar}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={pg.filterRow}>
-          {QUICK_FILTERS.map(f => (
-            <Pressable key={f} onPress={() => setActiveFilter(f)} style={[pg.filterChip, activeFilter === f && pg.filterChipOn]}>
-              <Text style={[pg.filterTxt, activeFilter === f && pg.filterTxtOn]}>{f}</Text>
-            </Pressable>
-          ))}
+          {QUICK_FILTERS.map(f => {
+            const meta  = STATUS_META[f] || { icon: 'circle-outline', color: '#64748B' };
+            const isOn  = activeFilter === f;
+            const count = f === 'All'
+              ? orders.length
+              : orders.filter(o => o.status === f).length;
+            return (
+              <Pressable
+                key={f}
+                onPress={() => setActiveFilter(f)}
+                style={[pg.pill, isOn && { backgroundColor: meta.color, borderColor: meta.color }]}>
+                {/* coloured dot — inactive only */}
+                {!isOn && <View style={[pg.pillDot, { backgroundColor: meta.color }]} />}
+                <Text style={[pg.pillTxt, { color: isOn ? '#fff' : C.text }]}>
+                  {f === 'Pending Approval' ? 'Pending' : f}
+                </Text>
+                {/* count bubble — only when > 0 */}
+                {count > 0 && (
+                  <View style={[pg.pillBadge, {
+                    backgroundColor: isOn ? 'rgba(255,255,255,0.3)' : meta.color,
+                  }]}>
+                    <Text style={pg.pillBadgeTxt}>{count}</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
         </ScrollView>
       </View>
 
       {/* ── Content ── */}
       {loading ? (
         <View style={pg.center}>
-          <ActivityIndicator size="large" color={C.red} />
+          <View style={pg.loadSpinnerWrap}>
+            <ActivityIndicator size="large" color={C.red} />
+          </View>
           <Text style={pg.loadTxt}>Loading orders…</Text>
         </View>
       ) : (
@@ -2044,22 +2145,41 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[C.red]} tintColor={C.red} />}>
 
-          <Text style={pg.countTxt}>
-            {filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''}
-            {activeFilter !== 'All' ? `  ·  ${activeFilter}` : ''}
-          </Text>
+          {/* Count bar */}
+          <View style={pg.countBar}>
+            <Text style={pg.countTxt}>
+              {filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''}
+              {activeFilter !== 'All' ? <Text style={{ color: C.red }}>  ·  {activeFilter}</Text> : null}
+            </Text>
+            {search.length > 0 && (
+              <View style={pg.searchActivePill}>
+                <Icon name="magnify" size={10} color={C.muted} />
+                <Text style={pg.searchActiveTxt}>"{search}"</Text>
+              </View>
+            )}
+          </View>
 
           {filteredOrders.length === 0 ? (
             <View style={pg.empty}>
-              <Icon name="package-variant-closed" size={60} color={C.line} />
-              <Text style={pg.emptyTitle}>No Orders Yet</Text>
+              <View style={pg.emptyIconWrap}>
+                <Icon name="package-variant-closed" size={44} color={C.red} style={{ opacity: 0.25 }} />
+              </View>
+              <Text style={pg.emptyTitle}>
+                {search ? 'No results found' : activeFilter !== 'All' ? `No ${activeFilter} orders` : 'No Orders Yet'}
+              </Text>
               <Text style={pg.emptyTxt}>
                 {search
-                  ? 'No orders match your search'
+                  ? `No orders match "${search}"`
                   : activeFilter !== 'All'
-                  ? `No "${activeFilter}" orders found`
-                  : 'Tap "+ Create" to create your first order'}
+                  ? `You don't have any "${activeFilter}" orders`
+                  : 'Place your first order by tapping the Create button above'}
               </Text>
+              {!search && activeFilter === 'All' && (
+                <Pressable style={pg.emptyBtn} onPress={() => setShowCreate(true)}>
+                  <Icon name="plus" size={16} color={C.white} />
+                  <Text style={pg.emptyBtnTxt}>Create Order</Text>
+                </Pressable>
+              )}
             </View>
           ) : (
             filteredOrders.map(order => (
@@ -2076,7 +2196,7 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
             ))
           )}
 
-          <View style={{ height: 32 }} />
+          <View style={{ height: 40 }} />
         </ScrollView>
       )}
 
@@ -2090,26 +2210,50 @@ export default function OrderManagementSection({ onBack, onNavigateToDispatch, o
 
 // ─── Screen Styles ────────────────────────────────────────────────────────────
 const pg = StyleSheet.create({
-  screen:       { flex: 1, backgroundColor: C.red },
-  navbar:       { height: 56, backgroundColor: C.red, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 12 },
-  backBtn:      { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
-  navTitle:     { flex: 1, fontSize: 17, fontWeight: '900', color: C.white, letterSpacing: 0.3 },
-  createPill:   { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.white, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 },
-  createTxt:    { fontSize: 13, fontWeight: '900', color: C.red },
-  searchWrap:   { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.white, marginHorizontal: 12, marginTop: 10, marginBottom: 6, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: C.line, ...sh },
-  searchIn:     { flex: 1, fontSize: 14, color: C.text, fontWeight: '500' },
-  filterBar:    { backgroundColor: C.bg },
-  filterRow:    { paddingHorizontal: 12, paddingVertical: 8, gap: 7 },
-  filterChip:   { paddingHorizontal: 13, paddingVertical: 7, borderRadius: 20, backgroundColor: C.white, borderWidth: 1.5, borderColor: C.line },
-  filterChipOn: { backgroundColor: C.red, borderColor: C.red },
-  filterTxt:    { fontSize: 12, fontWeight: '700', color: C.sub },
-  filterTxtOn:  { color: C.white, fontWeight: '900' },
-  list:         { flex: 1, backgroundColor: C.bg },
-  listInner:    { paddingHorizontal: 12, paddingTop: 4, paddingBottom: 32 },
-  countTxt:     { fontSize: 12, fontWeight: '700', color: C.muted, marginBottom: 8, marginLeft: 2 },
-  center:       { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg },
-  loadTxt:      { marginTop: 10, fontSize: 14, color: C.muted },
-  empty:        { alignItems: 'center', paddingTop: 60, paddingHorizontal: 32 },
-  emptyTitle:   { fontSize: 18, fontWeight: '900', color: C.text, marginTop: 14 },
-  emptyTxt:     { fontSize: 13, color: C.muted, textAlign: 'center', marginTop: 8, lineHeight: 20 },
+  screen:          { flex: 1, backgroundColor: C.bg },
+
+  // Navbar — gradient, no flat red
+  navbar:          { paddingTop: Platform.OS === 'android' ? 8 : 0, paddingBottom: 12, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  backBtn:         { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
+  navTitle:        { fontSize: 18, fontWeight: '900', color: C.white, letterSpacing: 0.2 },
+  navSub:          { fontSize: 11, color: 'rgba(255,255,255,0.75)', fontWeight: '600', marginTop: 1 },
+  createPill:      { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.white, borderRadius: 22, paddingHorizontal: 14, paddingVertical: 8, ...sh },
+  createTxt:       { fontSize: 13, fontWeight: '900', color: C.red },
+
+  // Search
+  searchWrap:      { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.white, marginHorizontal: 12, marginTop: 12, marginBottom: 4, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1.5, borderColor: '#EEF0F5', ...sh },
+  searchIconWrap:  { width: 28, height: 28, borderRadius: 8, backgroundColor: '#F8F9FA', alignItems: 'center', justifyContent: 'center' },
+  searchIn:        { flex: 1, fontSize: 14, color: C.text, fontWeight: '500' },
+
+  // Filter bar — pill tabs
+  filterBar:        { backgroundColor: C.bg, paddingTop: 6 },
+  filterRow:        { paddingHorizontal: 12, paddingVertical: 8, gap: 8, alignItems: 'center' },
+  pill:             { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 22, backgroundColor: C.white, borderWidth: 1.5, borderColor: '#E4E9F0' },
+  pillDot:          { width: 7, height: 7, borderRadius: 4 },
+  pillTxt:          { fontSize: 13, fontWeight: '700', color: C.text },
+  pillBadge:        { minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  pillBadgeTxt:     { fontSize: 10, fontWeight: '900', color: '#fff' },
+
+  // List
+  list:            { flex: 1, backgroundColor: C.bg },
+  listInner:       { paddingHorizontal: 12, paddingTop: 4, paddingBottom: 32 },
+
+  // Count bar
+  countBar:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, marginTop: 2, marginHorizontal: 2 },
+  countTxt:        { fontSize: 12, fontWeight: '700', color: C.muted },
+  searchActivePill:{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF1F2', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: '#FECDD3' },
+  searchActiveTxt: { fontSize: 11, fontWeight: '700', color: C.red },
+
+  // Loading
+  center:          { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg },
+  loadSpinnerWrap: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#FFF1F2', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  loadTxt:         { fontSize: 14, color: C.muted, fontWeight: '600' },
+
+  // Empty state
+  empty:           { alignItems: 'center', paddingTop: 60, paddingHorizontal: 32 },
+  emptyIconWrap:   { width: 88, height: 88, borderRadius: 44, backgroundColor: '#FFF1F2', alignItems: 'center', justifyContent: 'center', marginBottom: 18, borderWidth: 1.5, borderColor: '#FECDD3' },
+  emptyTitle:      { fontSize: 18, fontWeight: '900', color: C.text, marginBottom: 8 },
+  emptyTxt:        { fontSize: 13, color: C.muted, textAlign: 'center', lineHeight: 20 },
+  emptyBtn:        { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 22, backgroundColor: C.red, borderRadius: 22, paddingHorizontal: 22, paddingVertical: 12 },
+  emptyBtnTxt:     { fontSize: 14, fontWeight: '900', color: C.white },
 });

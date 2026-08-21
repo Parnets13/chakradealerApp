@@ -29,12 +29,12 @@ import dealerService from './services/dealerService';
 
 const {width: W} = Dimensions.get('window');
 
-const RED      = '#E05565';
-const RED_SOFT = '#FFF5F6';
-const DARK     = '#1A2332';
+const RED      = '#E8374A';   // Brand logo red — primary color
+const RED_SOFT = '#FFF0F2';
+const DARK     = '#0F172A';
 const GREY     = '#6B7280';
-const LINE     = '#F0F0F0';
-const BG       = '#F5F7FA';
+const LINE     = '#E4E9F0';
+const BG       = '#F1F4F8';
 const WHITE    = '#FFFFFF';
 
 /* ─── Curved Wave Header ───────────────────────────────────── */
@@ -55,9 +55,9 @@ function WaveHeader({children}) {
         <Svg width={W} height={HEADER_H} viewBox={`0 0 ${W} ${HEADER_H}`} style={StyleSheet.absoluteFill}>
           <Defs>
             <LinearGradient id="hbg" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%"   stopColor="#C94455" />
-              <Stop offset="50%"  stopColor="#D44D5E" />
-              <Stop offset="100%" stopColor="#E05565" />
+              <Stop offset="0%"   stopColor="#B5001A" />
+              <Stop offset="50%"  stopColor="#E8374A" />
+              <Stop offset="100%" stopColor="#D42035" />
             </LinearGradient>
             <LinearGradient id="shine" x1="0" y1="0" x2="1" y2="1">
               <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity="0.13" />
@@ -381,7 +381,7 @@ export default function ProfilePage({dealer: dealerProp, onLogout, onBack, onNav
   if (loading && !name && !mobile) {
     return (
       <SafeAreaView style={[pS.screen, {justifyContent:'center', alignItems:'center'}]} edges={['bottom']}>
-        <StatusBar barStyle="light-content" backgroundColor="#C94455"/>
+        <StatusBar barStyle="light-content" backgroundColor="#B5001A"/>
         <ActivityIndicator size="large" color={RED}/>
         <Text style={{marginTop:12, color:GREY, fontSize:14}}>Loading profile…</Text>
       </SafeAreaView>
@@ -392,7 +392,7 @@ export default function ProfilePage({dealer: dealerProp, onLogout, onBack, onNav
     <KeyboardAvoidingView
       style={pS.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <StatusBar barStyle="light-content" backgroundColor="#C94455"/>
+      <StatusBar barStyle="light-content" backgroundColor="#B5001A"/>
 
       {/* ── CURVED WAVE HEADER ── */}
       <WaveHeader>

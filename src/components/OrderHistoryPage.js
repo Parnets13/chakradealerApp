@@ -21,7 +21,7 @@ try { apiService = require('./services/apiService').default; } catch (_) { apiSe
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 const C = {
-  primary:  '#C8102E',
+  primary:  '#E8374A',
   bg:       '#F5F7FA',
   card:     '#FFFFFF',
   border:   '#E2E8F0',
